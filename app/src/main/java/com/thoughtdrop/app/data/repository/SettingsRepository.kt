@@ -57,6 +57,9 @@ class SettingsRepository(context: Context) {
     private val _aiEngineFlow: MutableStateFlow<String>
     val aiEngineFlow: StateFlow<String>
 
+    private val _deviceLockEnabledFlow: MutableStateFlow<Boolean>
+    val deviceLockEnabledFlow: StateFlow<Boolean>
+
     init {
         // Load Gemini Pool
         val loadedGeminiPool = loadStoredPool(KEY_API_POOL_JSON, KEY_API_KEY, BuildConfig.DEFAULT_GEMINI_KEY, "Gemini Account")
@@ -79,6 +82,10 @@ class SettingsRepository(context: Context) {
         val storedEngine = prefs.getString(KEY_AI_ENGINE, ENGINE_AUTO) ?: ENGINE_AUTO
         _aiEngineFlow = MutableStateFlow(storedEngine)
         aiEngineFlow = _aiEngineFlow.asStateFlow()
+
+        val isLockEnabled = prefs.getBoolean(KEY_DEVICE_LOCK_ENABLED, false)
+        _deviceLockEnabledFlow = MutableStateFlow(isLockEnabled)
+        deviceLockEnabledFlow = _deviceLockEnabledFlow.asStateFlow()
     }
 
     private fun loadStoredPool(
@@ -391,6 +398,13 @@ class SettingsRepository(context: Context) {
         _aiEngineFlow.value = valid
     }
 
+    fun isDeviceLockEnabled(): Boolean = _deviceLockEnabledFlow.value
+
+    fun setDeviceLockEnabled(enabled: Boolean) {
+        prefs.edit().putBoolean(KEY_DEVICE_LOCK_ENABLED, enabled).apply()
+        _deviceLockEnabledFlow.value = enabled
+    }
+
     companion object {
         private const val KEY_API_KEY = "gemini_api_key"
         private const val KEY_API_POOL_JSON = "gemini_api_pool_json"
@@ -399,6 +413,7 @@ class SettingsRepository(context: Context) {
         private const val KEY_GROQ_API_KEY = "groq_api_key"
         private const val KEY_GROQ_POOL_JSON = "groq_api_pool_json"
         private const val KEY_AI_ENGINE = "selected_ai_engine"
+        private const val KEY_DEVICE_LOCK_ENABLED = "device_lock_enabled"
 
         const val ENGINE_AUTO = "auto"     // Gemini primary -> Groq fallback
         const val ENGINE_GEMINI = "gemini" // Pure Gemini Multimodal

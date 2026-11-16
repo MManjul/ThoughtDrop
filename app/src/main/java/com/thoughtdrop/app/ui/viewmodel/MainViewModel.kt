@@ -50,6 +50,28 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _searchQuery = MutableStateFlow("")
     val searchQuery = _searchQuery.asStateFlow()
 
+    // Device Lock / Privacy Shield State
+    val isDeviceLockEnabled: StateFlow<Boolean> = settingsRepo.deviceLockEnabledFlow
+    private val _isAppUnlocked = MutableStateFlow(!settingsRepo.isDeviceLockEnabled())
+    val isAppUnlocked: StateFlow<Boolean> = _isAppUnlocked.asStateFlow()
+
+    fun unlockApp() {
+        _isAppUnlocked.value = true
+    }
+
+    fun lockApp() {
+        if (settingsRepo.isDeviceLockEnabled()) {
+            _isAppUnlocked.value = false
+        }
+    }
+
+    fun setDeviceLockEnabled(enabled: Boolean) {
+        settingsRepo.setDeviceLockEnabled(enabled)
+        if (!enabled) {
+            _isAppUnlocked.value = true
+        }
+    }
+
     private val _selectedCategory = MutableStateFlow<String?>(null)
     val selectedCategory = _selectedCategory.asStateFlow()
 

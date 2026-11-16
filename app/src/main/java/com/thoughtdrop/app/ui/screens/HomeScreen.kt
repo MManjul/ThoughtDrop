@@ -80,10 +80,13 @@ private enum class SmartFilter {
 fun HomeScreen(
     viewModel: MainViewModel,
     onRequestRecordAudioPermission: () -> Unit,
-    hasRecordPermission: Boolean
+    hasRecordPermission: Boolean,
+    onTriggerBiometricUnlock: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val notes by viewModel.notes.collectAsState()
+    val isDeviceLockEnabled by viewModel.isDeviceLockEnabled.collectAsState()
+    val isAppUnlocked by viewModel.isAppUnlocked.collectAsState()
     val categories by viewModel.categories.collectAsState()
     val searchQuery by viewModel.searchQuery.collectAsState()
     val selectedCategory by viewModel.selectedCategory.collectAsState()
@@ -247,7 +250,12 @@ fun HomeScreen(
             )
         }
 
-        Scaffold(
+        if (isDeviceLockEnabled && !isAppUnlocked) {
+            AppLockPrivacyScreen(
+                onUnlockClick = onTriggerBiometricUnlock
+            )
+        } else {
+            Scaffold(
             snackbarHost = { SnackbarHost(snackbarHostState) },
             containerColor = Color.Transparent,
             floatingActionButton = {
@@ -718,6 +726,7 @@ fun HomeScreen(
                 }
             }
         }
+    }
 
         // Delete Note Confirmation Dialog
         noteToDelete?.let { note ->

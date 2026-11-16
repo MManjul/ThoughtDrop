@@ -17,7 +17,9 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.Key
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.outlined.Fingerprint
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -31,6 +33,7 @@ import androidx.compose.ui.unit.sp
 import com.thoughtdrop.app.data.repository.ApiKeyEntry
 import com.thoughtdrop.app.data.repository.SettingsRepository
 import com.thoughtdrop.app.ui.theme.*
+import com.thoughtdrop.app.ui.util.BiometricAuthManager
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -631,6 +634,88 @@ fun SettingsDialog(
                             .fillMaxWidth()
                             .padding(vertical = 2.dp)
                     )
+                }
+
+                Spacer(modifier = Modifier.height(18.dp))
+
+                // 6. SECURITY & DEVICE LOCK (OPTION A)
+                Text("SECURITY & DEVICE LOCK", style = MaterialTheme.typography.titleSmall, color = AccentAmber, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.8.sp)
+                Spacer(modifier = Modifier.height(8.dp))
+
+                val isDeviceLockEnabled by settingsRepo.deviceLockEnabledFlow.collectAsState()
+
+                Surface(
+                    shape = RoundedCornerShape(14.dp),
+                    color = StudioSurface,
+                    border = BorderStroke(1.dp, if (isDeviceLockEnabled) AccentAmber.copy(alpha = 0.6f) else StudioBorder),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 14.dp, vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Surface(
+                            shape = CircleShape,
+                            color = if (isDeviceLockEnabled) AccentAmber.copy(alpha = 0.2f) else Color(0x1AFFFFFF),
+                            modifier = Modifier.size(36.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    imageVector = if (isDeviceLockEnabled) Icons.Default.Lock else Icons.Outlined.Fingerprint,
+                                    contentDescription = null,
+                                    tint = if (isDeviceLockEnabled) AccentAmber else TextMuted,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.width(12.dp))
+
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "Require Device Lock",
+                                fontWeight = FontWeight.Bold,
+                                color = TextPrimary,
+                                fontSize = 13.5.sp
+                            )
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text(
+                                text = "Require fingerprint, face, PIN, or pattern to view your notes. (Quick capture tile remains instant).",
+                                fontSize = 11.sp,
+                                color = TextSecondary,
+                                lineHeight = 15.sp
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.width(8.dp))
+
+                        Switch(
+                            checked = isDeviceLockEnabled,
+                            onCheckedChange = { targetState ->
+                                val activity = context as? androidx.fragment.app.FragmentActivity
+                                if (activity != null) {
+                                    BiometricAuthManager.authenticate(
+                                        activity = activity,
+                                        title = if (targetState) "Enable Device Lock" else "Disable Device Lock",
+                                        subtitle = "Verify your credentials to change app security",
+                                        onSuccess = {
+                                            settingsRepo.setDeviceLockEnabled(targetState)
+                                        }
+                                    )
+                                } else {
+                                    settingsRepo.setDeviceLockEnabled(targetState)
+                                }
+                            },
+                            colors = SwitchDefaults.colors(
+                                checkedThumbColor = Color.Black,
+                                checkedTrackColor = AccentAmber,
+                                uncheckedThumbColor = TextMuted,
+                                uncheckedTrackColor = StudioSurfaceElevated
+                            )
+                        )
+                    }
                 }
             }
         },
