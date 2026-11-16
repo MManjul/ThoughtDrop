@@ -1,0 +1,8 @@
+<resources>
+    <string name="app_name">ThoughtDrop</string>
+    <string name="title_quick_record">ThoughtDrop Quick Record</string>
+    <string name="tile_quick_record">Quick Idea</string>
+    <string name="record_hint">Tap to record your thought…</string>
+    <string name="recording">Listening to your idea…</string>
+    <string name="processing">Gemini is structuring your note…</string>
+</resources>

@@ -1,0 +1,11 @@
+<resources>
+    <style name="Theme.ThoughtDrop" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:statusBarColor">@color/background</item>
+        <item name="android:navigationBarColor">@color/background</item>
+    </style>
+
+    <style name="Theme.ThoughtDrop.QuickRecord" parent="Theme.ThoughtDrop">
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:windowIsTranslucent">true</item>
+    </style>
+</resources>
