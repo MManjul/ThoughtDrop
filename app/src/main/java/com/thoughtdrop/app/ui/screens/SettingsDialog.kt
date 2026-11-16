@@ -3,8 +3,12 @@ package com.thoughtdrop.app.ui.screens
 import android.content.Intent
 import android.net.Uri
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -12,30 +16,40 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.OpenInNew
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Bolt
-import androidx.compose.material.icons.filled.DeleteOutline
-import androidx.compose.material.icons.filled.Key
-import androidx.compose.material.icons.filled.Lock
-import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.Fingerprint
+import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material.icons.outlined.Security
+import androidx.compose.material.icons.outlined.Storage
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import com.thoughtdrop.app.data.repository.ApiKeyEntry
 import com.thoughtdrop.app.data.repository.SettingsRepository
 import com.thoughtdrop.app.ui.theme.*
 import com.thoughtdrop.app.ui.util.BiometricAuthManager
 
-@OptIn(ExperimentalMaterial3Api::class)
+/**
+ * Full-Screen Non-Transparent Settings & AI Engine Screen
+ * - Solid non-transparent obsidian background (#090D0B)
+ * - Full-screen edge-to-edge layout with top navigation bar
+ * - Multi-key pool rotation, daily quota meters, Gemini 4 Hydrogen model selector
+ * - Option A Security & Device Lock (Biometric / PIN / Pattern)
+ */
 @Composable
 fun SettingsDialog(
     settingsRepo: SettingsRepository,
@@ -45,6 +59,7 @@ fun SettingsDialog(
     val geminiPool by settingsRepo.apiKeyPoolFlow.collectAsState()
     val groqPool by settingsRepo.groqPoolFlow.collectAsState()
     val activeEngine by settingsRepo.aiEngineFlow.collectAsState()
+    val isDeviceLockEnabled by settingsRepo.deviceLockEnabledFlow.collectAsState()
     var selectedModel by remember { mutableStateOf(settingsRepo.getSelectedModel()) }
 
     // Gemini add key form
@@ -63,431 +78,388 @@ fun SettingsDialog(
     val readyGeminiCount = remember(geminiPool) { geminiPool.count { !it.isExhausted } }
     val readyGroqCount = remember(groqPool) { groqPool.count { !it.isExhausted } }
 
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        containerColor = StudioSurfaceElevated,
-        shape = RoundedCornerShape(22.dp),
-        title = {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Surface(
-                    shape = RoundedCornerShape(8.dp),
-                    color = AccentViolet.copy(alpha = 0.15f),
-                    border = BorderStroke(1.dp, AccentViolet.copy(alpha = 0.3f)),
-                    modifier = Modifier.size(34.dp)
-                ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Icon(Icons.Default.Key, contentDescription = null, tint = AccentViolet, modifier = Modifier.size(17.dp))
-                    }
-                }
-                Spacer(modifier = Modifier.width(12.dp))
-                Column {
-                    Text("AI Engine & Free Quotas", fontWeight = FontWeight.Bold, color = TextPrimary, fontSize = 17.sp)
-                    Text("Multi-Key Gemini & Groq Pools", fontSize = 11.5.sp, color = TextSecondary)
-                }
-            }
-        },
-        text = {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .verticalScroll(rememberScrollState())
-            ) {
-                // 1. ENGINE SELECTION SECTION
-                Text(
-                    text = "AI ENGINE ROUTING",
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Bold,
-                    letterSpacing = 0.8.sp,
-                    color = AccentViolet
-                )
-                Spacer(modifier = Modifier.height(6.dp))
+    val accentAmber = Color(0xFFF59E0B)
+    val accentEmerald = Color(0xFF10B981)
+    val cardBackground = Color(0xFF111814)
+    val cardBorder = BorderStroke(1.dp, Color(0x28FFFFFF))
 
-                val engines = listOf(
-                    SettingsRepository.ENGINE_AUTO to "🔄 Smart Auto-Failover (Gemini ➔ Groq)",
-                    SettingsRepository.ENGINE_GEMINI to "✦ Google Gemini Only (Native Multimodal)",
-                    SettingsRepository.ENGINE_GROQ to "⚡ Groq Cloud Only (Whisper + Llama)"
-                )
-                engines.forEach { (engineKey, label) ->
-                    val isSelected = activeEngine == engineKey
-                    FilterChip(
-                        selected = isSelected,
-                        onClick = { settingsRepo.setSelectedEngine(engineKey) },
-                        label = {
-                            Text(
-                                label,
-                                fontSize = 11.5.sp,
-                                fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal
-                            )
-                        },
-                        shape = RoundedCornerShape(10.dp),
-                        colors = FilterChipDefaults.filterChipColors(
-                            selectedContainerColor = if (engineKey == SettingsRepository.ENGINE_GROQ) AccentAmber else AccentViolet,
-                            selectedLabelColor = Color.White,
-                            containerColor = StudioSurface,
-                            labelColor = TextSecondary
-                        ),
-                        border = FilterChipDefaults.filterChipBorder(
-                            enabled = true,
-                            selected = isSelected,
-                            borderColor = StudioBorder,
-                            selectedBorderColor = if (engineKey == SettingsRepository.ENGINE_GROQ) AccentAmber else AccentViolet
-                        ),
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(
+            usePlatformDefaultWidth = false,
+            decorFitsSystemWindows = false
+        )
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color(0xFF090D0B)) // Solid non-transparent deep obsidian canvas
+                .statusBarsPadding()
+                .navigationBarsPadding()
+        ) {
+            Column(
+                modifier = Modifier.fillMaxSize()
+            ) {
+                // =========================================================================
+                // 1. TOP APP BAR
+                // =========================================================================
+                Surface(
+                    color = Color(0xFF0C130E),
+                    border = BorderStroke(1.dp, Color(0x1AFFFFFF)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(vertical = 2.dp)
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(16.dp))
-
-                // 2. DAILY USAGE SUMMARY CARD
-                Surface(
-                    shape = RoundedCornerShape(12.dp),
-                    color = StudioSurface,
-                    border = BorderStroke(1.dp, StudioBorder),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Column(modifier = Modifier.padding(14.dp)) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(
-                                text = "DAILY USAGE METER",
-                                fontSize = 10.5.sp,
-                                fontWeight = FontWeight.Bold,
-                                letterSpacing = 0.8.sp,
-                                color = TextMuted
-                            )
-                            Spacer(modifier = Modifier.weight(1f))
-                            Surface(
-                                shape = RoundedCornerShape(6.dp),
-                                color = AccentEmerald.copy(alpha = 0.15f),
-                                border = BorderStroke(0.7.dp, AccentEmerald.copy(alpha = 0.3f))
-                            ) {
-                                Text(
-                                    text = "$readyGeminiCount Gemini • $readyGroqCount Groq Ready",
-                                    fontSize = 10.5.sp,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = AccentEmerald,
-                                    modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.5.dp)
-                                )
-                            }
-                        }
-
-                        Spacer(modifier = Modifier.height(8.dp))
-
-                        Row(
-                            verticalAlignment = Alignment.Bottom,
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Text(
-                                text = "$todayCalls",
-                                fontSize = 24.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = TextPrimary,
-                                fontFamily = FontFamily.Monospace
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(
-                                text = "notes processed today across all pools",
-                                fontSize = 12.sp,
-                                color = TextSecondary,
-                                modifier = Modifier.padding(bottom = 3.dp)
-                            )
-                        }
-
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(
-                            text = "Automatic failover rotates keys seamlessly if any daily quota runs out.",
-                            fontSize = 11.sp,
-                            color = TextMuted
-                        )
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(18.dp))
-
-                // 3. GROQ MULTI-KEY ROTATING POOL
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(20.dp)
-                            .background(AccentAmber.copy(alpha = 0.2f), CircleShape),
-                        contentAlignment = Alignment.Center
+                            .padding(horizontal = 16.dp, vertical = 14.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(Icons.Default.Bolt, contentDescription = null, tint = AccentAmber, modifier = Modifier.size(13.dp))
-                    }
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text(
-                        text = "GROQ ROTATING POOL (${groqPool.size})",
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold,
-                        letterSpacing = 0.8.sp,
-                        color = AccentAmber
-                    )
-                    Spacer(modifier = Modifier.weight(1f))
-                    if (!isAddingGroqKey) {
-                        TextButton(
-                            onClick = { isAddingGroqKey = true },
-                            contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp)
+                        // Back Icon Button
+                        Box(
+                            modifier = Modifier
+                                .size(38.dp)
+                                .clip(CircleShape)
+                                .background(Color(0x22FFFFFF), CircleShape)
+                                .border(BorderStroke(1.dp, Color(0x33FFFFFF)), CircleShape)
+                                .clickable { onDismiss() },
+                            contentAlignment = Alignment.Center
                         ) {
-                            Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(14.dp), tint = AccentAmber)
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text("Add Groq Key", fontSize = 11.5.sp, color = AccentAmber, fontWeight = FontWeight.SemiBold)
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = "Back",
+                                tint = Color.White,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.width(14.dp))
+
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "Settings",
+                                fontSize = 19.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = Color.White,
+                                letterSpacing = (-0.3).sp
+                            )
+                            Text(
+                                text = "AI Routing, Quotas & Security",
+                                fontSize = 11.5.sp,
+                                color = Color(0xFF9CA3AF)
+                            )
+                        }
+
+                        // Done Pill Button
+                        Surface(
+                            shape = RoundedCornerShape(20.dp),
+                            color = accentAmber,
+                            modifier = Modifier
+                                .shadow(8.dp, RoundedCornerShape(20.dp), spotColor = accentAmber)
+                                .clickable { onDismiss() }
+                        ) {
+                            Text(
+                                text = "Done",
+                                fontWeight = FontWeight.ExtraBold,
+                                fontSize = 12.5.sp,
+                                color = Color.Black,
+                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 7.dp)
+                            )
                         }
                     }
                 }
 
-                Spacer(modifier = Modifier.height(6.dp))
+                // =========================================================================
+                // 2. SCROLLABLE SETTINGS CONTENT
+                // =========================================================================
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .verticalScroll(rememberScrollState())
+                        .padding(horizontal = 18.dp, vertical = 16.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
 
-                if (groqPool.isEmpty()) {
+                    // -----------------------------------------------------------------
+                    // DAILY USAGE METER CARD
+                    // -----------------------------------------------------------------
                     Surface(
-                        shape = RoundedCornerShape(10.dp),
-                        color = StudioSurface,
-                        border = BorderStroke(1.dp, StudioBorder),
+                        shape = RoundedCornerShape(20.dp),
+                        color = cardBackground,
+                        border = BorderStroke(1.dp, Color(0x3310B981)),
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        Column(modifier = Modifier.padding(12.dp)) {
+                        Column(modifier = Modifier.padding(18.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    text = "✦ DAILY USAGE & QUOTA METER",
+                                    fontSize = 10.5.sp,
+                                    fontFamily = FontFamily.Monospace,
+                                    fontWeight = FontWeight.Bold,
+                                    letterSpacing = 0.8.sp,
+                                    color = accentEmerald
+                                )
+                                Spacer(modifier = Modifier.weight(1f))
+                                Surface(
+                                    shape = RoundedCornerShape(20.dp),
+                                    color = accentEmerald.copy(alpha = 0.20f),
+                                    border = BorderStroke(0.8.dp, accentEmerald.copy(alpha = 0.40f))
+                                ) {
+                                    Text(
+                                        text = "$readyGeminiCount Gemini • $readyGroqCount Groq Ready",
+                                        fontSize = 10.5.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color(0xFF34D399),
+                                        modifier = Modifier.padding(horizontal = 9.dp, vertical = 3.dp)
+                                    )
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.height(12.dp))
+
+                            Row(verticalAlignment = Alignment.Bottom) {
+                                Text(
+                                    text = "$todayCalls",
+                                    fontSize = 32.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = Color.White,
+                                    fontFamily = FontFamily.Monospace
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = "notes processed today across all active keys",
+                                    fontSize = 12.5.sp,
+                                    color = Color(0xFFD1D5DB),
+                                    modifier = Modifier.padding(bottom = 5.dp)
+                                )
+                            }
+
+                            Spacer(modifier = Modifier.height(6.dp))
                             Text(
-                                text = "No Groq keys yet. Add 1 or more free Groq keys for 7,200s audio/day + 14,400 calls/day backup!",
+                                text = "Automatic key failover rotates active keys seamlessly if any free daily quota runs out.",
                                 fontSize = 11.5.sp,
-                                color = TextSecondary,
+                                color = Color(0xFF9CA3AF),
                                 lineHeight = 16.sp
                             )
                         }
                     }
-                } else {
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        groqPool.forEachIndexed { index, entry ->
-                            KeyCardRow(
-                                entry = entry,
-                                isPrimary = index == 0,
-                                activeColor = AccentAmber,
-                                onReset = { settingsRepo.resetGroqKeyStatus(entry.id) },
-                                onDelete = { settingsRepo.removeGroqApiKey(entry.id) }
-                            )
-                        }
-                    }
-                }
 
-                // ADD GROQ KEY FORM
-                AnimatedVisibility(visible = isAddingGroqKey) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(top = 8.dp)
-                    ) {
+                    // -----------------------------------------------------------------
+                    // SECTION: AI ENGINE ROUTING
+                    // -----------------------------------------------------------------
+                    SectionHeader(title = "AI ENGINE ROUTING", subtitle = "Choose your synthesis strategy")
+
+                    val engines = listOf(
+                        Triple(
+                            SettingsRepository.ENGINE_AUTO,
+                            "🔄 Smart Auto-Failover (Recommended)",
+                            "Primary Google Gemini native multi-modal with instant Groq Cloud Whisper & Llama failover."
+                        ),
+                        Triple(
+                            SettingsRepository.ENGINE_GEMINI,
+                            "✦ Google Gemini Native Only",
+                            "Sub-second direct audio synthesis with multi-photo whiteboard OCR and visual proof reasoning."
+                        ),
+                        Triple(
+                            SettingsRepository.ENGINE_GROQ,
+                            "⚡ Groq Cloud Whisper Only",
+                            "High-speed Whisper audio transcription followed by Llama 3 structured note synthesis."
+                        )
+                    )
+
+                    engines.forEach { (engineKey, title, desc) ->
+                        val isSelected = activeEngine == engineKey
                         Surface(
-                            shape = RoundedCornerShape(12.dp),
-                            color = StudioSurface,
-                            border = BorderStroke(1.dp, AccentAmber.copy(alpha = 0.5f)),
-                            modifier = Modifier.fillMaxWidth()
+                            shape = RoundedCornerShape(16.dp),
+                            color = if (isSelected) Color(0x1F10B981) else cardBackground,
+                            border = BorderStroke(
+                                1.2.dp,
+                                if (isSelected) accentEmerald else Color(0x24FFFFFF)
+                            ),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { settingsRepo.setSelectedEngine(engineKey) }
                         ) {
-                            Column(modifier = Modifier.padding(14.dp)) {
-                                Text(
-                                    text = "Add Groq API Key to Pool",
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 13.5.sp,
-                                    color = TextPrimary
+                            Row(
+                                modifier = Modifier.padding(14.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                RadioButton(
+                                    selected = isSelected,
+                                    onClick = { settingsRepo.setSelectedEngine(engineKey) },
+                                    colors = RadioButtonDefaults.colors(
+                                        selectedColor = accentEmerald,
+                                        unselectedColor = Color(0xFF6B7280)
+                                    )
                                 )
-                                Text(
-                                    text = "Whisper Large v3 + Llama 3.3 70B. Free with no credit card required.",
-                                    fontSize = 11.sp,
-                                    color = TextSecondary
-                                )
-
-                                Spacer(modifier = Modifier.height(10.dp))
-
-                                OutlinedTextField(
-                                    value = newGroqKeyInput,
-                                    onValueChange = {
-                                        newGroqKeyInput = it
-                                        groqInputError = null
-                                    },
-                                    placeholder = { Text("Paste Groq Key (gsk_...)", color = TextMuted, fontSize = 12.5.sp) },
-                                    singleLine = true,
-                                    shape = RoundedCornerShape(10.dp),
-                                    colors = OutlinedTextFieldDefaults.colors(
-                                        focusedContainerColor = StudioSurfaceElevated,
-                                        unfocusedContainerColor = StudioSurfaceElevated,
-                                        focusedTextColor = TextPrimary,
-                                        unfocusedTextColor = TextPrimary,
-                                        focusedBorderColor = AccentAmber,
-                                        unfocusedBorderColor = StudioBorder
-                                    ),
-                                    modifier = Modifier.fillMaxWidth()
-                                )
-
-                                Spacer(modifier = Modifier.height(8.dp))
-
-                                OutlinedTextField(
-                                    value = newGroqKeyLabel,
-                                    onValueChange = { newGroqKeyLabel = it },
-                                    placeholder = { Text("Label (e.g. Groq Personal, Groq Work)", color = TextMuted, fontSize = 12.5.sp) },
-                                    singleLine = true,
-                                    shape = RoundedCornerShape(10.dp),
-                                    colors = OutlinedTextFieldDefaults.colors(
-                                        focusedContainerColor = StudioSurfaceElevated,
-                                        unfocusedContainerColor = StudioSurfaceElevated,
-                                        focusedTextColor = TextPrimary,
-                                        unfocusedTextColor = TextPrimary,
-                                        focusedBorderColor = AccentAmber,
-                                        unfocusedBorderColor = StudioBorder
-                                    ),
-                                    modifier = Modifier.fillMaxWidth()
-                                )
-
-                                if (groqInputError != null) {
-                                    Spacer(modifier = Modifier.height(4.dp))
-                                    Text(text = groqInputError!!, color = AccentCoral, fontSize = 11.5.sp)
-                                }
-
-                                Spacer(modifier = Modifier.height(12.dp))
-
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.End
-                                ) {
-                                    TextButton(onClick = {
-                                        isAddingGroqKey = false
-                                        newGroqKeyInput = ""
-                                        newGroqKeyLabel = ""
-                                        groqInputError = null
-                                    }) {
-                                        Text("Cancel", color = TextSecondary, fontSize = 12.5.sp)
-                                    }
-
-                                    Spacer(modifier = Modifier.width(8.dp))
-
-                                    Button(
-                                        onClick = {
-                                            val key = newGroqKeyInput.trim()
-                                            if (key.isBlank()) {
-                                                groqInputError = "Please enter a Groq API key."
-                                                return@Button
-                                            }
-                                            val success = settingsRepo.addGroqApiKey(key, newGroqKeyLabel.trim())
-                                            if (success) {
-                                                isAddingGroqKey = false
-                                                newGroqKeyInput = ""
-                                                newGroqKeyLabel = ""
-                                                groqInputError = null
-                                            } else {
-                                                groqInputError = "This Groq key is already in your pool."
-                                            }
-                                        },
-                                        shape = RoundedCornerShape(8.dp),
-                                        colors = ButtonDefaults.buttonColors(containerColor = AccentAmber)
-                                    ) {
-                                        Text("Add to Groq Pool", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.Black)
-                                    }
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = title,
+                                        fontSize = 13.5.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (isSelected) Color.White else Color(0xFFE5E7EB)
+                                    )
+                                    Spacer(modifier = Modifier.height(2.dp))
+                                    Text(
+                                        text = desc,
+                                        fontSize = 11.sp,
+                                        color = Color(0xFF9CA3AF),
+                                        lineHeight = 15.sp
+                                    )
                                 }
                             }
                         }
                     }
-                }
 
-                Spacer(modifier = Modifier.height(4.dp))
-                TextButton(
-                    onClick = {
-                        val browserIntent = Intent(
-                            Intent.ACTION_VIEW,
-                            Uri.parse("https://console.groq.com/keys")
-                        )
-                        context.startActivity(browserIntent)
-                    },
-                    modifier = Modifier.align(Alignment.End),
-                    contentPadding = PaddingValues(0.dp)
-                ) {
-                    Text("Get Free Groq Key (console.groq.com)", color = AccentAmber, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Icon(Icons.AutoMirrored.Filled.OpenInNew, contentDescription = null, tint = AccentAmber, modifier = Modifier.size(12.dp))
-                }
+                    // -----------------------------------------------------------------
+                    // SECTION: GEMINI REASONING MODEL
+                    // -----------------------------------------------------------------
+                    SectionHeader(title = "GEMINI REASONING MODEL", subtitle = "Flagship sub-second synthesis tier")
 
-                Spacer(modifier = Modifier.height(18.dp))
-
-                // 4. GEMINI MULTI-KEY ROTATING POOL
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text(
-                        text = "GEMINI ROTATING POOL (${geminiPool.size})",
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold,
-                        letterSpacing = 0.8.sp,
-                        color = AccentViolet
+                    val models = listOf(
+                        Triple("gemini-4-hydrogen", "Gemini 4 Hydrogen", "Flagship 1M Context • Non-destructive whiteboard OCR"),
+                        Triple("gemini-3.5-flash-lite", "Gemini 3.5 Flash Lite", "Sub-second real-time voice synthesis"),
+                        Triple("gemini-3.5-flash", "Gemini 3.5 Flash", "Balanced high-speed multi-modal model"),
+                        Triple("gemini-flash-lite-latest", "Gemini Flash Lite Latest", "Lightweight preview tier")
                     )
-                    Spacer(modifier = Modifier.weight(1f))
-                    if (!isAddingGeminiKey) {
-                        TextButton(
-                            onClick = { isAddingGeminiKey = true },
-                            contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp)
+
+                    models.forEach { (modelId, name, tag) ->
+                        val isSelected = selectedModel == modelId
+                        Surface(
+                            shape = RoundedCornerShape(14.dp),
+                            color = if (isSelected) Color(0x1FF59E0B) else cardBackground,
+                            border = BorderStroke(
+                                1.dp,
+                                if (isSelected) accentAmber else Color(0x20FFFFFF)
+                            ),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    selectedModel = modelId
+                                    settingsRepo.setSelectedModel(modelId)
+                                }
                         ) {
-                            Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(14.dp), tint = AccentViolet)
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text("Add Gemini Key", fontSize = 11.5.sp, color = AccentViolet, fontWeight = FontWeight.SemiBold)
+                            Row(
+                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                RadioButton(
+                                    selected = isSelected,
+                                    onClick = {
+                                        selectedModel = modelId
+                                        settingsRepo.setSelectedModel(modelId)
+                                    },
+                                    colors = RadioButtonDefaults.colors(
+                                        selectedColor = accentAmber,
+                                        unselectedColor = Color(0xFF6B7280)
+                                    )
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = name,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 13.sp,
+                                        color = if (isSelected) Color.White else Color(0xFFE5E7EB)
+                                    )
+                                    Text(
+                                        text = tag,
+                                        fontSize = 10.5.sp,
+                                        color = if (isSelected) accentAmber else Color(0xFF9CA3AF)
+                                    )
+                                }
+                            }
                         }
                     }
-                }
 
-                Spacer(modifier = Modifier.height(6.dp))
-
-                if (geminiPool.isEmpty()) {
-                    Surface(
-                        shape = RoundedCornerShape(10.dp),
-                        color = StudioSurface,
-                        border = BorderStroke(1.dp, StudioBorder),
-                        modifier = Modifier.fillMaxWidth()
+                    // -----------------------------------------------------------------
+                    // SECTION: GEMINI MULTI-KEY POOL
+                    // -----------------------------------------------------------------
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text(
-                            text = "No Gemini keys configured yet. Tap '+ Add Gemini Key' below.",
-                            fontSize = 12.sp,
-                            color = TextMuted,
-                            modifier = Modifier.padding(12.dp)
+                        SectionHeader(
+                            title = "GEMINI MULTI-KEY POOL (${geminiPool.size})",
+                            subtitle = "Automatic failover across free accounts"
                         )
+                        Spacer(modifier = Modifier.weight(1f))
+                        if (!isAddingGeminiKey) {
+                            Surface(
+                                shape = RoundedCornerShape(16.dp),
+                                color = Color(0x2210B981),
+                                border = BorderStroke(0.8.dp, Color(0x4D10B981)),
+                                modifier = Modifier.clickable { isAddingGeminiKey = true }
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
+                                ) {
+                                    Icon(Icons.Default.Add, contentDescription = null, tint = Color(0xFF34D399), modifier = Modifier.size(13.dp))
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text("Add Key", fontSize = 11.5.sp, fontWeight = FontWeight.Bold, color = Color(0xFF34D399))
+                                }
+                            }
+                        }
                     }
-                } else {
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+
+                    if (geminiPool.isEmpty()) {
+                        Surface(
+                            shape = RoundedCornerShape(14.dp),
+                            color = cardBackground,
+                            border = cardBorder,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(18.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                Text(
+                                    text = "No Gemini API Keys Configured",
+                                    color = Color(0xFFE5E7EB),
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 13.sp
+                                )
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(
+                                    text = "Add a free key from Google AI Studio to start synthesizing voice notes.",
+                                    color = Color(0xFF9CA3AF),
+                                    fontSize = 11.5.sp,
+                                    lineHeight = 16.sp
+                                )
+                            }
+                        }
+                    } else {
                         geminiPool.forEachIndexed { index, entry ->
                             KeyCardRow(
                                 entry = entry,
                                 isPrimary = index == 0,
-                                activeColor = AccentViolet,
+                                activeColor = Color(0xFF34D399),
                                 onReset = { settingsRepo.resetKeyStatus(entry.id) },
                                 onDelete = { settingsRepo.removeApiKey(entry.id) }
                             )
                         }
                     }
-                }
 
-                // ADD GEMINI KEY FORM
-                AnimatedVisibility(visible = isAddingGeminiKey) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(top = 8.dp)
+                    // Inline Add Gemini Key Form
+                    AnimatedVisibility(
+                        visible = isAddingGeminiKey,
+                        enter = fadeIn(tween(200)),
+                        exit = fadeOut(tween(200))
                     ) {
                         Surface(
-                            shape = RoundedCornerShape(12.dp),
-                            color = StudioSurface,
-                            border = BorderStroke(1.dp, AccentViolet.copy(alpha = 0.5f)),
+                            shape = RoundedCornerShape(16.dp),
+                            color = Color(0xFF141F18),
+                            border = BorderStroke(1.dp, Color(0x4D10B981)),
                             modifier = Modifier.fillMaxWidth()
                         ) {
-                            Column(modifier = Modifier.padding(14.dp)) {
+                            Column(modifier = Modifier.padding(16.dp)) {
                                 Text(
-                                    text = "Add Another Free Gemini Key",
+                                    text = "Add Google AI Studio Gemini Key",
                                     fontWeight = FontWeight.Bold,
-                                    fontSize = 13.5.sp,
-                                    color = TextPrimary
+                                    fontSize = 13.sp,
+                                    color = Color.White
                                 )
-                                Text(
-                                    text = "Generate a key from another Google account for automatic rotation.",
-                                    fontSize = 11.sp,
-                                    color = TextSecondary
-                                )
-
                                 Spacer(modifier = Modifier.height(10.dp))
 
                                 OutlinedTextField(
@@ -496,16 +468,16 @@ fun SettingsDialog(
                                         newGeminiKeyInput = it
                                         geminiInputError = null
                                     },
-                                    placeholder = { Text("Paste Gemini Key (AQ.Ab...)", color = TextMuted, fontSize = 12.5.sp) },
+                                    placeholder = { Text("Paste API Key (AIza...)", color = Color(0xFF6B7280), fontSize = 12.5.sp) },
                                     singleLine = true,
                                     shape = RoundedCornerShape(10.dp),
                                     colors = OutlinedTextFieldDefaults.colors(
-                                        focusedContainerColor = StudioSurfaceElevated,
-                                        unfocusedContainerColor = StudioSurfaceElevated,
-                                        focusedTextColor = TextPrimary,
-                                        unfocusedTextColor = TextPrimary,
-                                        focusedBorderColor = AccentViolet,
-                                        unfocusedBorderColor = StudioBorder
+                                        focusedContainerColor = Color(0xFF090D0B),
+                                        unfocusedContainerColor = Color(0xFF090D0B),
+                                        focusedTextColor = Color.White,
+                                        unfocusedTextColor = Color.White,
+                                        focusedBorderColor = Color(0xFF34D399),
+                                        unfocusedBorderColor = Color(0x33FFFFFF)
                                     ),
                                     modifier = Modifier.fillMaxWidth()
                                 )
@@ -515,23 +487,23 @@ fun SettingsDialog(
                                 OutlinedTextField(
                                     value = newGeminiKeyLabel,
                                     onValueChange = { newGeminiKeyLabel = it },
-                                    placeholder = { Text("Label (e.g. Account 2, Work Gmail)", color = TextMuted, fontSize = 12.5.sp) },
+                                    placeholder = { Text("Label (e.g. Personal Gmail, Account 2)", color = Color(0xFF6B7280), fontSize = 12.5.sp) },
                                     singleLine = true,
                                     shape = RoundedCornerShape(10.dp),
                                     colors = OutlinedTextFieldDefaults.colors(
-                                        focusedContainerColor = StudioSurfaceElevated,
-                                        unfocusedContainerColor = StudioSurfaceElevated,
-                                        focusedTextColor = TextPrimary,
-                                        unfocusedTextColor = TextPrimary,
-                                        focusedBorderColor = AccentViolet,
-                                        unfocusedBorderColor = StudioBorder
+                                        focusedContainerColor = Color(0xFF090D0B),
+                                        unfocusedContainerColor = Color(0xFF090D0B),
+                                        focusedTextColor = Color.White,
+                                        unfocusedTextColor = Color.White,
+                                        focusedBorderColor = Color(0xFF34D399),
+                                        unfocusedBorderColor = Color(0x33FFFFFF)
                                     ),
                                     modifier = Modifier.fillMaxWidth()
                                 )
 
                                 if (geminiInputError != null) {
                                     Spacer(modifier = Modifier.height(4.dp))
-                                    Text(text = geminiInputError!!, color = AccentCoral, fontSize = 11.5.sp)
+                                    Text(text = geminiInputError!!, color = Color(0xFFFB7185), fontSize = 11.5.sp)
                                 }
 
                                 Spacer(modifier = Modifier.height(12.dp))
@@ -546,7 +518,7 @@ fun SettingsDialog(
                                         newGeminiKeyLabel = ""
                                         geminiInputError = null
                                     }) {
-                                        Text("Cancel", color = TextSecondary, fontSize = 12.5.sp)
+                                        Text("Cancel", color = Color(0xFF9CA3AF), fontSize = 12.5.sp)
                                     }
 
                                     Spacer(modifier = Modifier.width(8.dp))
@@ -568,187 +540,413 @@ fun SettingsDialog(
                                                 geminiInputError = "This key is already in your pool."
                                             }
                                         },
-                                        shape = RoundedCornerShape(8.dp),
-                                        colors = ButtonDefaults.buttonColors(containerColor = AccentViolet)
+                                        shape = RoundedCornerShape(10.dp),
+                                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF10B981))
                                     ) {
-                                        Text("Add to Gemini Pool", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                                        Text("Add Key", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.Black)
                                     }
                                 }
                             }
                         }
                     }
-                }
 
-                Spacer(modifier = Modifier.height(4.dp))
-                TextButton(
-                    onClick = {
-                        val browserIntent = Intent(
-                            Intent.ACTION_VIEW,
-                            Uri.parse("https://aistudio.google.com/apikey")
-                        )
-                        context.startActivity(browserIntent)
-                    },
-                    modifier = Modifier.align(Alignment.End),
-                    contentPadding = PaddingValues(0.dp)
-                ) {
-                    Text("Get Free Key in Google AI Studio", color = AccentViolet, fontSize = 11.5.sp)
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Icon(Icons.AutoMirrored.Filled.OpenInNew, contentDescription = null, tint = AccentViolet, modifier = Modifier.size(13.dp))
-                }
-
-                Spacer(modifier = Modifier.height(12.dp))
-
-                // 5. GEMINI MODEL SELECTOR
-                Text("GEMINI MODEL", style = MaterialTheme.typography.titleSmall, color = TextMuted, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.8.sp)
-                Spacer(modifier = Modifier.height(8.dp))
-
-                val models = listOf(
-                    "gemini-4-hydrogen" to "Gemini 4 Hydrogen (Flagship 1M Context)",
-                    "gemini-3.5-flash-lite" to "Gemini 3.5 Flash Lite (Sub-Second)",
-                    "gemini-3.5-flash" to "Gemini 3.5 Flash",
-                    "gemini-flash-lite-latest" to "Gemini Flash Lite Latest"
-                )
-                models.forEach { (modelId, label) ->
-                    val isSelected = selectedModel == modelId
-                    FilterChip(
-                        selected = isSelected,
+                    // Direct Link to Google AI Studio
+                    TextButton(
                         onClick = {
-                            selectedModel = modelId
-                            settingsRepo.setSelectedModel(modelId)
+                            val browserIntent = Intent(
+                                Intent.ACTION_VIEW,
+                                Uri.parse("https://aistudio.google.com/apikey")
+                            )
+                            context.startActivity(browserIntent)
                         },
-                        label = { Text(label, fontSize = 12.sp, fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal) },
-                        shape = RoundedCornerShape(10.dp),
-                        colors = FilterChipDefaults.filterChipColors(
-                            selectedContainerColor = AccentViolet,
-                            selectedLabelColor = Color.White,
-                            containerColor = StudioSurface,
-                            labelColor = TextSecondary
-                        ),
-                        border = FilterChipDefaults.filterChipBorder(
-                            enabled = true,
-                            selected = isSelected,
-                            borderColor = StudioBorder,
-                            selectedBorderColor = AccentViolet
-                        ),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 2.dp)
-                    )
-                }
+                        modifier = Modifier.align(Alignment.End),
+                        contentPadding = PaddingValues(0.dp)
+                    ) {
+                        Text("Get Free Gemini Key in Google AI Studio", color = Color(0xFF34D399), fontSize = 11.5.sp)
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Icon(Icons.AutoMirrored.Filled.OpenInNew, contentDescription = null, tint = Color(0xFF34D399), modifier = Modifier.size(13.dp))
+                    }
 
-                Spacer(modifier = Modifier.height(18.dp))
-
-                // 6. SECURITY & DEVICE LOCK (OPTION A)
-                Text("SECURITY & DEVICE LOCK", style = MaterialTheme.typography.titleSmall, color = AccentAmber, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.8.sp)
-                Spacer(modifier = Modifier.height(8.dp))
-
-                val isDeviceLockEnabled by settingsRepo.deviceLockEnabledFlow.collectAsState()
-
-                Surface(
-                    shape = RoundedCornerShape(14.dp),
-                    color = StudioSurface,
-                    border = BorderStroke(1.dp, if (isDeviceLockEnabled) AccentAmber.copy(alpha = 0.6f) else StudioBorder),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
+                    // -----------------------------------------------------------------
+                    // SECTION: GROQ MULTI-KEY POOL
+                    // -----------------------------------------------------------------
                     Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 14.dp, vertical = 12.dp),
+                        modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
+                        SectionHeader(
+                            title = "GROQ ROTATING POOL (${groqPool.size})",
+                            subtitle = "Ultra-fast Whisper fallback tier"
+                        )
+                        Spacer(modifier = Modifier.weight(1f))
+                        if (!isAddingGroqKey) {
+                            Surface(
+                                shape = RoundedCornerShape(16.dp),
+                                color = Color(0x22F59E0B),
+                                border = BorderStroke(0.8.dp, Color(0x4DF59E0B)),
+                                modifier = Modifier.clickable { isAddingGroqKey = true }
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
+                                ) {
+                                    Icon(Icons.Default.Add, contentDescription = null, tint = accentAmber, modifier = Modifier.size(13.dp))
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text("Add Groq Key", fontSize = 11.5.sp, fontWeight = FontWeight.Bold, color = accentAmber)
+                                }
+                            }
+                        }
+                    }
+
+                    if (groqPool.isEmpty()) {
                         Surface(
-                            shape = CircleShape,
-                            color = if (isDeviceLockEnabled) AccentAmber.copy(alpha = 0.2f) else Color(0x1AFFFFFF),
-                            modifier = Modifier.size(36.dp)
+                            shape = RoundedCornerShape(14.dp),
+                            color = cardBackground,
+                            border = cardBorder,
+                            modifier = Modifier.fillMaxWidth()
                         ) {
-                            Box(contentAlignment = Alignment.Center) {
-                                Icon(
-                                    imageVector = if (isDeviceLockEnabled) Icons.Default.Lock else Icons.Outlined.Fingerprint,
-                                    contentDescription = null,
-                                    tint = if (isDeviceLockEnabled) AccentAmber else TextMuted,
-                                    modifier = Modifier.size(18.dp)
+                            Column(
+                                modifier = Modifier.padding(18.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                Text(
+                                    text = "No Groq Cloud Keys Configured",
+                                    color = Color(0xFFE5E7EB),
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 13.sp
+                                )
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(
+                                    text = "Groq provides instant Whisper speech transcription as a backup when Gemini free limits are reached.",
+                                    color = Color(0xFF9CA3AF),
+                                    fontSize = 11.5.sp,
+                                    lineHeight = 16.sp
                                 )
                             }
                         }
-
-                        Spacer(modifier = Modifier.width(12.dp))
-
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = "Require Device Lock",
-                                fontWeight = FontWeight.Bold,
-                                color = TextPrimary,
-                                fontSize = 13.5.sp
-                            )
-                            Spacer(modifier = Modifier.height(2.dp))
-                            Text(
-                                text = "Require fingerprint, face, PIN, or pattern to view your notes. (Quick capture tile remains instant).",
-                                fontSize = 11.sp,
-                                color = TextSecondary,
-                                lineHeight = 15.sp
+                    } else {
+                        groqPool.forEachIndexed { index, entry ->
+                            KeyCardRow(
+                                entry = entry,
+                                isPrimary = index == 0,
+                                activeColor = accentAmber,
+                                onReset = { settingsRepo.resetGroqKeyStatus(entry.id) },
+                                onDelete = { settingsRepo.removeGroqApiKey(entry.id) }
                             )
                         }
-
-                        Spacer(modifier = Modifier.width(8.dp))
-
-                        Switch(
-                            checked = isDeviceLockEnabled,
-                            onCheckedChange = { targetState ->
-                                val activity = context as? androidx.fragment.app.FragmentActivity
-                                if (activity != null) {
-                                    BiometricAuthManager.authenticate(
-                                        activity = activity,
-                                        title = if (targetState) "Enable Device Lock" else "Disable Device Lock",
-                                        subtitle = "Verify your credentials to change app security",
-                                        onSuccess = {
-                                            settingsRepo.setDeviceLockEnabled(targetState)
-                                        }
-                                    )
-                                } else {
-                                    settingsRepo.setDeviceLockEnabled(targetState)
-                                }
-                            },
-                            colors = SwitchDefaults.colors(
-                                checkedThumbColor = Color.Black,
-                                checkedTrackColor = AccentAmber,
-                                uncheckedThumbColor = TextMuted,
-                                uncheckedTrackColor = StudioSurfaceElevated
-                            )
-                        )
                     }
+
+                    // Inline Add Groq Key Form
+                    AnimatedVisibility(
+                        visible = isAddingGroqKey,
+                        enter = fadeIn(tween(200)),
+                        exit = fadeOut(tween(200))
+                    ) {
+                        Surface(
+                            shape = RoundedCornerShape(16.dp),
+                            color = Color(0xFF1E170E),
+                            border = BorderStroke(1.dp, Color(0x4DF59E0B)),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(modifier = Modifier.padding(16.dp)) {
+                                Text(
+                                    text = "Add Groq Cloud Key",
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 13.sp,
+                                    color = Color.White
+                                )
+                                Spacer(modifier = Modifier.height(10.dp))
+
+                                OutlinedTextField(
+                                    value = newGroqKeyInput,
+                                    onValueChange = {
+                                        newGroqKeyInput = it
+                                        groqInputError = null
+                                    },
+                                    placeholder = { Text("Paste Groq Key (gsk_...)", color = Color(0xFF6B7280), fontSize = 12.5.sp) },
+                                    singleLine = true,
+                                    shape = RoundedCornerShape(10.dp),
+                                    colors = OutlinedTextFieldDefaults.colors(
+                                        focusedContainerColor = Color(0xFF090D0B),
+                                        unfocusedContainerColor = Color(0xFF090D0B),
+                                        focusedTextColor = Color.White,
+                                        unfocusedTextColor = Color.White,
+                                        focusedBorderColor = accentAmber,
+                                        unfocusedBorderColor = Color(0x33FFFFFF)
+                                    ),
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+
+                                Spacer(modifier = Modifier.height(8.dp))
+
+                                OutlinedTextField(
+                                    value = newGroqKeyLabel,
+                                    onValueChange = { newGroqKeyLabel = it },
+                                    placeholder = { Text("Label (e.g. Backup Account)", color = Color(0xFF6B7280), fontSize = 12.5.sp) },
+                                    singleLine = true,
+                                    shape = RoundedCornerShape(10.dp),
+                                    colors = OutlinedTextFieldDefaults.colors(
+                                        focusedContainerColor = Color(0xFF090D0B),
+                                        unfocusedContainerColor = Color(0xFF090D0B),
+                                        focusedTextColor = Color.White,
+                                        unfocusedTextColor = Color.White,
+                                        focusedBorderColor = accentAmber,
+                                        unfocusedBorderColor = Color(0x33FFFFFF)
+                                    ),
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+
+                                if (groqInputError != null) {
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Text(text = groqInputError!!, color = Color(0xFFFB7185), fontSize = 11.5.sp)
+                                }
+
+                                Spacer(modifier = Modifier.height(12.dp))
+
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.End
+                                ) {
+                                    TextButton(onClick = {
+                                        isAddingGroqKey = false
+                                        newGroqKeyInput = ""
+                                        newGroqKeyLabel = ""
+                                        groqInputError = null
+                                    }) {
+                                        Text("Cancel", color = Color(0xFF9CA3AF), fontSize = 12.5.sp)
+                                    }
+
+                                    Spacer(modifier = Modifier.width(8.dp))
+
+                                    Button(
+                                        onClick = {
+                                            val key = newGroqKeyInput.trim()
+                                            if (key.isBlank()) {
+                                                groqInputError = "Please enter an API key."
+                                                return@Button
+                                            }
+                                            val success = settingsRepo.addGroqApiKey(key, newGroqKeyLabel.trim())
+                                            if (success) {
+                                                isAddingGroqKey = false
+                                                newGroqKeyInput = ""
+                                                newGroqKeyLabel = ""
+                                                groqInputError = null
+                                            } else {
+                                                groqInputError = "This key is already in your pool."
+                                            }
+                                        },
+                                        shape = RoundedCornerShape(10.dp),
+                                        colors = ButtonDefaults.buttonColors(containerColor = accentAmber)
+                                    ) {
+                                        Text("Add Key", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.Black)
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // Direct Link to Groq Console
+                    TextButton(
+                        onClick = {
+                            val browserIntent = Intent(
+                                Intent.ACTION_VIEW,
+                                Uri.parse("https://console.groq.com/keys")
+                            )
+                            context.startActivity(browserIntent)
+                        },
+                        modifier = Modifier.align(Alignment.End),
+                        contentPadding = PaddingValues(0.dp)
+                    ) {
+                        Text("Get Free Groq Key in console.groq.com", color = accentAmber, fontSize = 11.5.sp)
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Icon(Icons.AutoMirrored.Filled.OpenInNew, contentDescription = null, tint = accentAmber, modifier = Modifier.size(13.dp))
+                    }
+
+                    // -----------------------------------------------------------------
+                    // SECTION: SECURITY & DEVICE LOCK (OPTION A)
+                    // -----------------------------------------------------------------
+                    SectionHeader(
+                        title = "SECURITY & DEVICE LOCK (OPTION A)",
+                        subtitle = "Instant quick-record capture, device-lock protected browsing"
+                    )
+
+                    Surface(
+                        shape = RoundedCornerShape(18.dp),
+                        color = cardBackground,
+                        border = BorderStroke(
+                            1.2.dp,
+                            if (isDeviceLockEnabled) accentAmber.copy(alpha = 0.8f) else Color(0x28FFFFFF)
+                        ),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(16.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Surface(
+                                shape = CircleShape,
+                                color = if (isDeviceLockEnabled) accentAmber.copy(alpha = 0.20f) else Color(0x1AFFFFFF),
+                                modifier = Modifier.size(42.dp)
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(
+                                        imageVector = if (isDeviceLockEnabled) Icons.Default.Lock else Icons.Outlined.Fingerprint,
+                                        contentDescription = null,
+                                        tint = if (isDeviceLockEnabled) accentAmber else Color(0xFF9CA3AF),
+                                        modifier = Modifier.size(22.dp)
+                                    )
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.width(14.dp))
+
+                            Column(modifier = Modifier.weight(1f)) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(
+                                        text = "Require Device Lock",
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = Color.White,
+                                        fontSize = 14.sp
+                                    )
+                                    if (isDeviceLockEnabled) {
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Surface(
+                                            shape = RoundedCornerShape(10.dp),
+                                            color = accentAmber.copy(alpha = 0.2f)
+                                        ) {
+                                            Text(
+                                                text = "ACTIVE",
+                                                fontSize = 9.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = accentAmber,
+                                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 1.dp)
+                                            )
+                                        }
+                                    }
+                                }
+                                Spacer(modifier = Modifier.height(3.dp))
+                                Text(
+                                    text = "Requires your phone's fingerprint, face, PIN, or pattern to open ThoughtDrop and browse your notes. (Notification shade quick-record tile remains instant).",
+                                    fontSize = 11.5.sp,
+                                    color = Color(0xFF9CA3AF),
+                                    lineHeight = 16.sp
+                                )
+                            }
+
+                            Spacer(modifier = Modifier.width(10.dp))
+
+                            Switch(
+                                checked = isDeviceLockEnabled,
+                                onCheckedChange = { targetState ->
+                                    val activity = context as? androidx.fragment.app.FragmentActivity
+                                    if (activity != null) {
+                                        BiometricAuthManager.authenticate(
+                                            activity = activity,
+                                            title = if (targetState) "Enable Device Lock" else "Disable Device Lock",
+                                            subtitle = "Verify your credentials to change security settings",
+                                            onSuccess = {
+                                                settingsRepo.setDeviceLockEnabled(targetState)
+                                            }
+                                        )
+                                    } else {
+                                        settingsRepo.setDeviceLockEnabled(targetState)
+                                    }
+                                },
+                                colors = SwitchDefaults.colors(
+                                    checkedThumbColor = Color.Black,
+                                    checkedTrackColor = accentAmber,
+                                    uncheckedThumbColor = Color(0xFF9CA3AF),
+                                    uncheckedTrackColor = Color(0xFF1F2923)
+                                )
+                            )
+                        }
+                    }
+
+                    // -----------------------------------------------------------------
+                    // SECTION: LOCAL STORAGE & DIAGNOSTICS
+                    // -----------------------------------------------------------------
+                    SectionHeader(title = "LOCAL STORAGE & PRIVACY", subtitle = "100% On-device privacy guarantee")
+
+                    Surface(
+                        shape = RoundedCornerShape(16.dp),
+                        color = cardBackground,
+                        border = cardBorder,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(modifier = Modifier.padding(16.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Outlined.Storage, contentDescription = null, tint = accentEmerald, modifier = Modifier.size(18.dp))
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text("Room SQLite Database v5", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                                Spacer(modifier = Modifier.weight(1f))
+                                Text("Encrypted Sandbox", fontSize = 11.sp, color = accentEmerald, fontWeight = FontWeight.SemiBold)
+                            }
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Text(
+                                text = "All voice transcripts, audio recordings, OCR attachments, and settings reside strictly on your phone. Zero cloud telemetry or central servers.",
+                                fontSize = 11.5.sp,
+                                color = Color(0xFF9CA3AF),
+                                lineHeight = 16.sp
+                            )
+                            Spacer(modifier = Modifier.height(10.dp))
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Outlined.Info, contentDescription = null, tint = Color(0xFF6B7280), modifier = Modifier.size(15.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("ThoughtDrop v1.0.0 (Living Optical Glass Edition)", fontSize = 11.sp, color = Color(0xFF6B7280))
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(40.dp))
                 }
             }
-        },
-        confirmButton = {
-            Button(
-                onClick = onDismiss,
-                shape = RoundedCornerShape(10.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = AccentViolet)
-            ) {
-                Text("Done", fontWeight = FontWeight.Bold, color = Color.White)
-            }
         }
-    )
+    }
+}
+
+@Composable
+private fun SectionHeader(title: String, subtitle: String) {
+    Column(modifier = Modifier.padding(top = 4.dp)) {
+        Text(
+            text = title,
+            fontSize = 11.sp,
+            fontFamily = FontFamily.Monospace,
+            fontWeight = FontWeight.Bold,
+            letterSpacing = 0.8.sp,
+            color = Color(0xFFFBBF24)
+        )
+        Spacer(modifier = Modifier.height(1.dp))
+        Text(
+            text = subtitle,
+            fontSize = 11.5.sp,
+            color = Color(0xFF6B7280)
+        )
+    }
 }
 
 @Composable
 private fun KeyCardRow(
     entry: ApiKeyEntry,
     isPrimary: Boolean,
-    activeColor: Color = AccentViolet,
+    activeColor: Color,
     onReset: () -> Unit,
     onDelete: () -> Unit
 ) {
     Surface(
-        shape = RoundedCornerShape(10.dp),
-        color = StudioSurface,
-        border = BorderStroke(1.dp, if (entry.isExhausted) AccentCoral.copy(alpha = 0.4f) else StudioBorder),
+        shape = RoundedCornerShape(14.dp),
+        color = Color(0xFF111814),
+        border = BorderStroke(
+            1.dp,
+            if (entry.isExhausted) Color(0x33F43F5E) else Color(0x24FFFFFF)
+        ),
         modifier = Modifier.fillMaxWidth()
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 9.dp),
+                .padding(horizontal = 14.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Column(modifier = Modifier.weight(1f)) {
@@ -757,7 +955,7 @@ private fun KeyCardRow(
                         text = entry.label,
                         fontWeight = FontWeight.Bold,
                         fontSize = 13.sp,
-                        color = TextPrimary
+                        color = Color.White
                     )
                     if (isPrimary) {
                         Spacer(modifier = Modifier.width(6.dp))
@@ -783,7 +981,7 @@ private fun KeyCardRow(
                         text = entry.getMaskedKey(),
                         fontFamily = FontFamily.Monospace,
                         fontSize = 11.sp,
-                        color = TextMuted
+                        color = Color(0xFF9CA3AF)
                     )
                     Spacer(modifier = Modifier.width(8.dp))
 
@@ -792,24 +990,24 @@ private fun KeyCardRow(
                             verticalAlignment = Alignment.CenterVertically,
                             modifier = Modifier.clickable { onReset() }
                         ) {
-                            Box(modifier = Modifier.size(5.dp).background(AccentCoral, CircleShape))
+                            Box(modifier = Modifier.size(5.dp).background(Color(0xFFFB7185), CircleShape))
                             Spacer(modifier = Modifier.width(4.dp))
                             Text(
                                 text = "Quota Exhausted",
-                                color = AccentCoral,
+                                color = Color(0xFFFB7185),
                                 fontSize = 10.5.sp,
                                 fontWeight = FontWeight.SemiBold
                             )
                             Spacer(modifier = Modifier.width(4.dp))
-                            Icon(Icons.Default.Refresh, contentDescription = "Retry key", tint = AccentCoral, modifier = Modifier.size(11.dp))
+                            Icon(Icons.Default.Refresh, contentDescription = "Retry key", tint = Color(0xFFFB7185), modifier = Modifier.size(11.dp))
                         }
                     } else {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Box(modifier = Modifier.size(5.dp).background(AccentEmerald, CircleShape))
+                            Box(modifier = Modifier.size(5.dp).background(activeColor, CircleShape))
                             Spacer(modifier = Modifier.width(4.dp))
                             Text(
                                 text = "Active • ${entry.callCountToday} calls",
-                                color = AccentEmerald,
+                                color = activeColor,
                                 fontSize = 10.5.sp,
                                 fontWeight = FontWeight.Medium
                             )
@@ -825,7 +1023,7 @@ private fun KeyCardRow(
                 Icon(
                     Icons.Default.DeleteOutline,
                     contentDescription = "Remove Key",
-                    tint = TextMuted,
+                    tint = Color(0xFF9CA3AF),
                     modifier = Modifier.size(16.dp)
                 )
             }
