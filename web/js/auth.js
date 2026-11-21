@@ -42,6 +42,9 @@ async function resolveFirebaseConfig() {
 }
 
 export async function initAuth() {
+  // Clear any legacy mock preview user so user isn't misled
+  localStorage.removeItem('thoughtdrop_local_user');
+
   const config = await resolveFirebaseConfig();
   if (config && config.apiKey && config.projectId) {
     try {
@@ -60,59 +63,38 @@ export async function initAuth() {
       });
       return;
     } catch (e) {
-      console.warn("Firebase init failed, falling back to local:", e);
+      console.warn("Firebase init failed:", e);
     }
   }
 
-  // Fallback to Local Preview Mode
-  const localSavedUser = localStorage.getItem('thoughtdrop_local_user');
-  if (localSavedUser) {
-    currentUser = JSON.parse(localSavedUser);
-  } else {
-    // Default local user for instant testing
-    currentUser = {
-      uid: 'local_mayank',
-      displayName: 'Mayank Manjul',
-      email: 'local@thoughtdrop.dev',
-      photoURL: 'https://ui-avatars.com/api/?name=Mayank+Manjul&background=ff3366&color=fff',
-      isCloud: false
-    };
-  }
+  // Not signed in
+  currentUser = null;
   notifyListeners();
 }
 
 export async function loginWithGoogle() {
-  if (auth) {
-    const provider = new GoogleAuthProvider();
-    provider.setCustomParameters({ prompt: 'select_account' });
-    try {
-      const result = await signInWithPopup(auth, provider);
-      currentUser = {
-        uid: result.user.uid,
-        displayName: result.user.displayName,
-        email: result.user.email,
-        photoURL: result.user.photoURL,
-        isCloud: true
-      };
-      localStorage.removeItem('thoughtdrop_local_user');
-      notifyListeners();
-      return currentUser;
-    } catch (error) {
-      console.error("Google Sign-In failed:", error);
-      throw error;
-    }
-  } else {
-    // In local mode, simulate sign-in
+  if (!auth) {
+    const config = await resolveFirebaseConfig();
+    const app = getApps().length === 0 ? initializeApp(config) : getApps()[0];
+    auth = getAuth(app);
+  }
+
+  const provider = new GoogleAuthProvider();
+  provider.setCustomParameters({ prompt: 'select_account' });
+  try {
+    const result = await signInWithPopup(auth, provider);
     currentUser = {
-      uid: 'local_mayank',
-      displayName: 'Mayank Manjul',
-      email: 'mayank@local.dev',
-      photoURL: 'https://ui-avatars.com/api/?name=Mayank+Manjul&background=ff3366&color=fff',
-      isCloud: false
+      uid: result.user.uid,
+      displayName: result.user.displayName,
+      email: result.user.email,
+      photoURL: result.user.photoURL,
+      isCloud: true
     };
-    localStorage.setItem('thoughtdrop_local_user', JSON.stringify(currentUser));
     notifyListeners();
     return currentUser;
+  } catch (error) {
+    console.error("Google Sign-In failed:", error);
+    throw error;
   }
 }
 
