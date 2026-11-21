@@ -584,7 +584,16 @@ function openSettingsModal() {
   if (!modal) return;
 
   document.getElementById('gemini-key-input').value = localStorage.getItem('thoughtdrop_gemini_key') || '';
-  document.getElementById('firebase-config-input').value = localStorage.getItem('thoughtdrop_firebase_config') || '';
+
+  const user = window.ThoughtDropAuth?.getCurrentUser();
+  const statusText = document.getElementById('settings-cloud-status-text');
+  if (statusText) {
+    if (user) {
+      statusText.textContent = `Connected as ${user.displayName || user.email}`;
+    } else {
+      statusText.textContent = 'Cloud Sync Connected (Ready to Sign In)';
+    }
+  }
 
   modal.classList.add('active');
 }
@@ -595,7 +604,6 @@ function closeSettingsModal() {
 
 function saveSettings() {
   const geminiKey = document.getElementById('gemini-key-input').value.trim();
-  const fbConfig = document.getElementById('firebase-config-input').value.trim();
 
   if (geminiKey) {
     localStorage.setItem('thoughtdrop_gemini_key', geminiKey);
@@ -603,21 +611,7 @@ function saveSettings() {
     localStorage.removeItem('thoughtdrop_gemini_key');
   }
 
-  if (fbConfig) {
-    try {
-      JSON.parse(fbConfig); // validate JSON
-      localStorage.setItem('thoughtdrop_firebase_config', fbConfig);
-    } catch (e) {
-      alert("Firebase config must be valid JSON.");
-      return;
-    }
-  } else {
-    localStorage.removeItem('thoughtdrop_firebase_config');
-  }
-
   closeSettingsModal();
-  alert("Settings saved successfully!");
-  location.reload();
 }
 
 function escapeHtml(text) {
