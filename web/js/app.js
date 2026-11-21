@@ -11,6 +11,7 @@ let allNotes = [];
 let selectedCategory = 'all';
 let searchQuery = '';
 let currentEditingNote = null;
+let currentSharingNote = null;
 
 // Initialize on DOM Ready
 document.addEventListener('DOMContentLoaded', () => {
@@ -25,10 +26,25 @@ document.addEventListener('DOMContentLoaded', () => {
   onNotesChanged((notes) => {
     allNotes = notes;
     renderNotesGrid();
+    // If modal is open, refresh its view
+    if (currentEditingNote) {
+      const refreshed = allNotes.find(n => n.id === currentEditingNote.id);
+      if (refreshed) {
+        currentEditingNote = refreshed;
+        populateDetailView(refreshed);
+      }
+    }
   });
 });
 
 function setupEventListeners() {
+  // Global Escape Key Listener - Returns to main page
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' || e.key === 'Esc') {
+      closeAllModals();
+    }
+  });
+
   // Auth button
   document.getElementById('auth-btn')?.addEventListener('click', async () => {
     const user = getCurrentUser();
@@ -72,13 +88,57 @@ function setupEventListeners() {
     });
   });
 
-  // Note Detail Modal
+  // Note Detail Modal: Close
   document.getElementById('close-detail-btn')?.addEventListener('click', closeDetailModal);
+
+  // Note Detail Modal: Export PDF
   document.getElementById('detail-pdf-btn')?.addEventListener('click', () => {
     if (currentEditingNote) exportNotePdf(currentEditingNote);
   });
-  document.getElementById('detail-save-btn')?.addEventListener('click', handleSaveEditedNote);
+
+  // Note Detail Modal: Share
+  document.getElementById('detail-share-btn')?.addEventListener('click', () => {
+    if (currentEditingNote) openShareModal(currentEditingNote);
+  });
+
+  // Note Detail Modal: Switch to Content Edit Mode
+  document.getElementById('open-edit-mode-btn')?.addEventListener('click', () => {
+    switchDetailMode('edit');
+  });
+
+  // Note Detail Modal: Cancel Edit
+  document.getElementById('detail-cancel-edit-btn')?.addEventListener('click', () => {
+    switchDetailMode('view');
+  });
+
+  // Note Detail Modal: Refine Content with AI
   document.getElementById('detail-refine-btn')?.addEventListener('click', handleRefineInModal);
+
+  // Note Detail Modal: Save Raw Content Without AI
+  document.getElementById('detail-save-raw-btn')?.addEventListener('click', handleSaveRawInModal);
+
+  // Share Modal triggers
+  document.getElementById('close-share-btn')?.addEventListener('click', closeShareModal);
+  document.getElementById('copy-link-btn')?.addEventListener('click', handleCopyShareLink);
+  document.getElementById('share-copy-text-btn')?.addEventListener('click', handleCopyFullNoteText);
+  document.getElementById('share-whatsapp-btn')?.addEventListener('click', handleShareWhatsApp);
+  document.getElementById('share-email-btn')?.addEventListener('click', handleShareEmail);
+  document.getElementById('share-twitter-btn')?.addEventListener('click', handleShareTwitter);
+
+  // Close modals when clicking backdrop
+  document.querySelectorAll('.modal-overlay').forEach(overlay => {
+    overlay.addEventListener('click', (e) => {
+      if (e.target === overlay) {
+        closeAllModals();
+      }
+    });
+  });
+}
+
+function closeAllModals() {
+  closeDetailModal();
+  closeShareModal();
+  closeSettingsModal();
 }
 
 function updateAuthUI(user) {
@@ -126,8 +186,7 @@ async function handleRefineNote() {
     await saveNote(newNote, user);
 
     textarea.value = '';
-    // Show subtle feedback
-    refineBtn.innerHTML = `✓ Refined & Saved!`;
+    refineBtn.innerHTML = `✓ Refined &amp; Saved!`;
     setTimeout(() => {
       refineBtn.disabled = false;
       refineBtn.innerHTML = origBtnText;
@@ -232,7 +291,8 @@ function renderNotesGrid() {
         <div class="note-card-footer">
           <span style="font-size: 11px; color: var(--text-muted);">✦ ThoughtDrop</span>
           <div class="card-actions">
-            <button class="icon-btn pdf-btn" title="Export Crimson PDF" data-action="pdf" data-id="${note.id}">🖨️</button>
+            <button class="icon-btn" title="Share" data-action="share" data-id="${note.id}">🔗</button>
+            <button class="icon-btn pdf-btn" title="Export PDF" data-action="pdf" data-id="${note.id}">🖨️</button>
             <button class="icon-btn ${note.isPinned ? 'pin-active' : ''}" title="Pin Note" data-action="pin" data-id="${note.id}">📌</button>
             <button class="icon-btn" title="Delete Note" data-action="delete" data-id="${note.id}">🗑️</button>
           </div>
@@ -252,6 +312,9 @@ function renderNotesGrid() {
       if (action === 'pdf') {
         e.stopPropagation();
         exportNotePdf(note);
+      } else if (action === 'share') {
+        e.stopPropagation();
+        openShareModal(note);
       } else if (action === 'pin') {
         e.stopPropagation();
         togglePinNote(noteId, getCurrentUser());
@@ -267,20 +330,89 @@ function renderNotesGrid() {
   });
 }
 
-// Detail & Edit Modal
+// Open Detail Modal (Clean Optical Glass Reader)
 function openDetailModal(note) {
   currentEditingNote = note;
+  populateDetailView(note);
+  switchDetailMode('view');
+
   const modal = document.getElementById('detail-modal');
-  if (!modal) return;
+  modal?.classList.add('active');
+}
 
-  document.getElementById('detail-title-input').value = note.title || '';
-  document.getElementById('detail-category-input').value = note.category || 'Idea';
-  document.getElementById('detail-summary-input').value = note.summary || '';
-  document.getElementById('detail-points-input').value = (note.keyPoints || []).join('\n');
-  document.getElementById('detail-actions-input').value = (note.actionItems || []).join('\n');
-  document.getElementById('detail-transcript-input').value = note.transcript || '';
+function populateDetailView(note) {
+  const dateFormatted = new Date(note.createdAt || Date.now()).toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric'
+  });
 
-  modal.classList.add('active');
+  const badge = document.getElementById('detail-view-badge');
+  if (badge) badge.innerText = (note.category || 'Idea').toUpperCase();
+
+  const dateEl = document.getElementById('detail-view-date');
+  if (dateEl) dateEl.innerText = dateFormatted;
+
+  const titleEl = document.getElementById('detail-view-title');
+  if (titleEl) titleEl.innerText = note.title || 'Untitled Thought';
+
+  const summaryEl = document.getElementById('detail-view-summary');
+  if (summaryEl) summaryEl.innerText = note.summary || 'No summary available.';
+
+  // Key Points
+  const keyPointsContainer = document.getElementById('detail-section-keypoints');
+  const keyPointsList = document.getElementById('detail-view-keypoints');
+  const keyPoints = Array.isArray(note.keyPoints) ? note.keyPoints : [];
+  if (keyPoints.length > 0 && keyPointsList) {
+    keyPointsList.innerHTML = keyPoints.map(p => `
+      <li><span class="bullet-dot">•</span><span>${escapeHtml(p)}</span></li>
+    `).join('');
+    keyPointsContainer.style.display = 'block';
+  } else if (keyPointsContainer) {
+    keyPointsContainer.style.display = 'none';
+  }
+
+  // Action Items
+  const actionsContainer = document.getElementById('detail-section-actions');
+  const actionsList = document.getElementById('detail-view-actions');
+  const actionItems = Array.isArray(note.actionItems) ? note.actionItems : [];
+  if (actionItems.length > 0 && actionsList) {
+    actionsList.innerHTML = actionItems.map(a => `
+      <li><span class="bullet-dot">•</span><span>${escapeHtml(a)}</span></li>
+    `).join('');
+    actionsContainer.style.display = 'block';
+  } else if (actionsContainer) {
+    actionsContainer.style.display = 'none';
+  }
+
+  // Transcript / Raw notes
+  const transcriptContainer = document.getElementById('detail-section-transcript');
+  const transcriptEl = document.getElementById('detail-view-transcript');
+  if (note.transcript && transcriptEl) {
+    transcriptEl.innerText = note.transcript;
+    transcriptContainer.style.display = 'block';
+  } else if (transcriptContainer) {
+    transcriptContainer.style.display = 'none';
+  }
+}
+
+function switchDetailMode(mode) {
+  const viewContainer = document.getElementById('detail-view-container');
+  const editContainer = document.getElementById('detail-edit-container');
+
+  if (mode === 'edit') {
+    viewContainer.style.display = 'none';
+    editContainer.style.display = 'block';
+    const textarea = document.getElementById('detail-edit-textarea');
+    // Pre-fill with note content (transcript or summary)
+    if (textarea && currentEditingNote) {
+      textarea.value = currentEditingNote.transcript || currentEditingNote.summary || '';
+      textarea.focus();
+    }
+  } else {
+    viewContainer.style.display = 'block';
+    editContainer.style.display = 'none';
+  }
 }
 
 function closeDetailModal() {
@@ -288,63 +420,38 @@ function closeDetailModal() {
   currentEditingNote = null;
 }
 
-async function handleSaveEditedNote() {
+// In-Modal AI Refine
+async function handleRefineInModal() {
   if (!currentEditingNote) return;
 
-  const title = document.getElementById('detail-title-input').value.trim();
-  const category = document.getElementById('detail-category-input').value.trim();
-  const summary = document.getElementById('detail-summary-input').value.trim();
-  const pointsStr = document.getElementById('detail-points-input').value;
-  const actionsStr = document.getElementById('detail-actions-input').value;
-  const transcript = document.getElementById('detail-transcript-input').value;
-
-  const keyPoints = pointsStr.split('\n').map(p => p.replace(/^[•\-\*]\s*/, '').trim()).filter(Boolean);
-  const actionItems = actionsStr.split('\n').map(a => a.replace(/^[•\-\*]\s*/, '').trim()).filter(Boolean);
-
-  const updatedNote = {
-    ...currentEditingNote,
-    title: title || "Untitled Thought",
-    category: category || "Idea",
-    summary,
-    keyPoints,
-    actionItems,
-    transcript,
-    updatedAt: Date.now()
-  };
-
-  await saveNote(updatedNote, getCurrentUser());
-  closeDetailModal();
-}
-
-async function handleRefineInModal() {
-  const summary = document.getElementById('detail-summary-input').value.trim();
-  const transcript = document.getElementById('detail-transcript-input').value.trim();
-  const category = document.getElementById('detail-category-input').value.trim();
-
-  const sourceText = transcript || summary;
-  if (!sourceText) {
-    alert("Please write something in Summary or Transcript to refine.");
+  const textarea = document.getElementById('detail-edit-textarea');
+  const text = textarea?.value.trim();
+  if (!text) {
+    alert("Please write something to refine.");
     return;
   }
 
   const btn = document.getElementById('detail-refine-btn');
   const origText = btn.innerHTML;
   btn.disabled = true;
-  btn.innerHTML = `<span class="spinner"></span> Refining...`;
+  btn.innerHTML = `<span class="spinner"></span> Refining with Gemini...`;
 
   try {
-    const refined = await refineTextWithAI(sourceText, category);
-    document.getElementById('detail-title-input').value = refined.title;
-    document.getElementById('detail-category-input').value = refined.category;
-    document.getElementById('detail-summary-input').value = refined.summary;
-    document.getElementById('detail-points-input').value = (refined.keyPoints || []).join('\n');
-    document.getElementById('detail-actions-input').value = (refined.actionItems || []).join('\n');
+    const refined = await refineTextWithAI(text, currentEditingNote.category || 'Idea');
+    const updatedNote = {
+      ...currentEditingNote,
+      ...refined,
+      transcript: text,
+      updatedAt: Date.now()
+    };
 
-    btn.innerHTML = `✓ Refined!`;
-    setTimeout(() => {
-      btn.disabled = false;
-      btn.innerHTML = origText;
-    }, 1200);
+    await saveNote(updatedNote, getCurrentUser());
+    currentEditingNote = updatedNote;
+    populateDetailView(updatedNote);
+    switchDetailMode('view');
+
+    btn.innerHTML = origText;
+    btn.disabled = false;
   } catch (err) {
     alert("Refine Error: " + err.message);
     btn.disabled = false;
@@ -352,7 +459,126 @@ async function handleRefineInModal() {
   }
 }
 
-// Settings Modal
+// In-Modal Save Raw Content
+async function handleSaveRawInModal() {
+  if (!currentEditingNote) return;
+
+  const textarea = document.getElementById('detail-edit-textarea');
+  const text = textarea?.value.trim();
+  if (!text) return;
+
+  const updatedNote = {
+    ...currentEditingNote,
+    transcript: text,
+    summary: text.slice(0, 200),
+    updatedAt: Date.now()
+  };
+
+  await saveNote(updatedNote, getCurrentUser());
+  currentEditingNote = updatedNote;
+  populateDetailView(updatedNote);
+  switchDetailMode('view');
+}
+
+// ==========================================================================
+// YOUTUBE-STYLE SHARE MODAL CONTROLLER
+// ==========================================================================
+
+function openShareModal(note) {
+  currentSharingNote = note;
+  const modal = document.getElementById('share-modal');
+  if (!modal) return;
+
+  document.getElementById('share-preview-badge').innerText = (note.category || 'Idea').toUpperCase();
+  document.getElementById('share-preview-title').innerText = note.title || 'Untitled Thought';
+  document.getElementById('share-preview-summary').innerText = note.summary || '';
+
+  // Generate shareable link
+  const shareUrl = `${window.location.origin}${window.location.pathname}#note=${encodeURIComponent(note.id)}`;
+  const input = document.getElementById('share-link-input');
+  if (input) input.value = shareUrl;
+
+  const copyBtn = document.getElementById('copy-link-btn');
+  if (copyBtn) copyBtn.innerText = 'Copy';
+
+  modal.classList.add('active');
+}
+
+function closeShareModal() {
+  document.getElementById('share-modal')?.classList.remove('active');
+  currentSharingNote = null;
+}
+
+async function handleCopyShareLink() {
+  const input = document.getElementById('share-link-input');
+  const btn = document.getElementById('copy-link-btn');
+  if (!input) return;
+
+  try {
+    await navigator.clipboard.writeText(input.value);
+    if (btn) btn.innerText = '✓ Copied!';
+    setTimeout(() => {
+      if (btn) btn.innerText = 'Copy';
+    }, 2000);
+  } catch (err) {
+    input.select();
+    document.execCommand('copy');
+    if (btn) btn.innerText = '✓ Copied!';
+  }
+}
+
+async function handleCopyFullNoteText() {
+  if (!currentSharingNote) return;
+
+  const keyPointsText = (currentSharingNote.keyPoints || []).map(p => `• ${p}`).join('\n');
+  const actionItemsText = (currentSharingNote.actionItems || []).map(a => `• ${a}`).join('\n');
+
+  const fullText = `
+💡 ${currentSharingNote.title} [Tag: #${currentSharingNote.category}]
+
+Summary:
+${currentSharingNote.summary}
+
+${keyPointsText ? `✦ Key Insights:\n${keyPointsText}\n` : ''}
+${actionItemsText ? `✦ Next Steps:\n${actionItemsText}\n` : ''}
+${currentSharingNote.transcript ? `🎙 Notes:\n${currentSharingNote.transcript}\n` : ''}
+— Shared via ThoughtDrop
+  `.trim();
+
+  try {
+    await navigator.clipboard.writeText(fullText);
+    const btn = document.getElementById('share-copy-text-btn');
+    const orig = btn.innerHTML;
+    btn.innerHTML = `<span class="share-icon">✓</span><span>Copied!</span>`;
+    setTimeout(() => { btn.innerHTML = orig; }, 1800);
+  } catch (e) {
+    alert("Could not copy text to clipboard.");
+  }
+}
+
+function handleShareWhatsApp() {
+  if (!currentSharingNote) return;
+  const text = encodeURIComponent(`*${currentSharingNote.title}*\n\n${currentSharingNote.summary}\n\n— Shared via ThoughtDrop`);
+  window.open(`https://api.whatsapp.com/send?text=${text}`, '_blank');
+}
+
+function handleShareEmail() {
+  if (!currentSharingNote) return;
+  const subject = encodeURIComponent(`ThoughtDrop: ${currentSharingNote.title}`);
+  const body = encodeURIComponent(`${currentSharingNote.title}\n\n${currentSharingNote.summary}\n\n${(currentSharingNote.keyPoints || []).map(p => `• ${p}`).join('\n')}`);
+  window.location.href = `mailto:?subject=${subject}&body=${body}`;
+}
+
+function handleShareTwitter() {
+  if (!currentSharingNote) return;
+  const text = encodeURIComponent(`💡 "${currentSharingNote.title}"\n\n${currentSharingNote.summary.slice(0, 150)}...\n\n#ThoughtDrop`);
+  window.open(`https://twitter.com/intent/tweet?text=${text}`, '_blank');
+}
+
+// ==========================================================================
+// SETTINGS MODAL CONTROLLER
+// ==========================================================================
+
 function openSettingsModal() {
   const modal = document.getElementById('settings-modal');
   if (!modal) return;
