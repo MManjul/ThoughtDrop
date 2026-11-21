@@ -167,12 +167,20 @@ class FirebaseSyncManager private constructor() {
             scope.launch(Dispatchers.IO) {
                 val cloudGeminiKey = data["geminiApiKey"] as? String
                 val cloudGroqKey = data["groqApiKey"] as? String
+                val cloudModel = data["selectedModel"] as? String
+                val cloudEngine = data["selectedEngine"] as? String
 
                 if (!cloudGeminiKey.isNullOrBlank()) {
                     settingsRepo.addApiKey(cloudGeminiKey, "Web Sync Key")
                 }
                 if (!cloudGroqKey.isNullOrBlank()) {
                     settingsRepo.addGroqApiKey(cloudGroqKey, "Web Sync Key")
+                }
+                if (!cloudModel.isNullOrBlank()) {
+                    settingsRepo.setSelectedModel(cloudModel)
+                }
+                if (!cloudEngine.isNullOrBlank()) {
+                    settingsRepo.setSelectedEngine(cloudEngine)
                 }
             }
         }
@@ -184,12 +192,8 @@ class FirebaseSyncManager private constructor() {
                 for (localNote in localNotes) {
                     pushNoteToCloudInternal(user.uid, localNote)
                 }
-                // Push local API keys to cloud so web gets them
-                val geminiKey = settingsRepo.getApiKey()
-                val groqKey = settingsRepo.getGroqApiKey()
-                if (geminiKey.isNotBlank() || groqKey.isNotBlank()) {
-                    pushSettingsToCloudInternal(user.uid, geminiKey, groqKey)
-                }
+                // Push local API keys, pools and models to cloud so web gets them
+                pushSettingsToCloudInternal(user.uid, settingsRepo)
                 _syncState.value = SyncState.Synced()
             } catch (e: Exception) {
                 Log.e(TAG, "Error in initial push to cloud", e)
@@ -249,23 +253,47 @@ class FirebaseSyncManager private constructor() {
         }
     }
 
-    suspend fun pushSettingsToCloud(geminiKey: String?, groqKey: String?) {
+    suspend fun pushSettingsToCloud(settingsRepo: SettingsRepository) {
         val user = auth.currentUser ?: return
-        pushSettingsToCloudInternal(user.uid, geminiKey, groqKey)
+        pushSettingsToCloudInternal(user.uid, settingsRepo)
     }
 
-    private suspend fun pushSettingsToCloudInternal(userId: String, geminiKey: String?, groqKey: String?) {
+    private suspend fun pushSettingsToCloudInternal(userId: String, settingsRepo: SettingsRepository) {
         try {
             val docRef = firestore.collection("users")
                 .document(userId)
                 .collection("settings")
                 .document("ai_keys")
 
+            val geminiPool = settingsRepo.getAllKeys().map { entry ->
+                mapOf(
+                    "id" to entry.id,
+                    "key" to entry.key,
+                    "label" to entry.label,
+                    "isExhausted" to entry.isExhausted,
+                    "callCountToday" to entry.callCountToday
+                )
+            }
+
+            val groqPool = settingsRepo.getAllGroqKeys().map { entry ->
+                mapOf(
+                    "id" to entry.id,
+                    "key" to entry.key,
+                    "label" to entry.label,
+                    "isExhausted" to entry.isExhausted,
+                    "callCountToday" to entry.callCountToday
+                )
+            }
+
             val data = hashMapOf<String, Any>(
-                "updatedAt" to System.currentTimeMillis()
+                "updatedAt" to System.currentTimeMillis(),
+                "geminiApiKey" to settingsRepo.getApiKey(),
+                "groqApiKey" to settingsRepo.getGroqApiKey(),
+                "geminiPool" to geminiPool,
+                "groqPool" to groqPool,
+                "selectedModel" to settingsRepo.getSelectedModel(),
+                "selectedEngine" to settingsRepo.getSelectedEngine()
             )
-            if (!geminiKey.isNullOrBlank()) data["geminiApiKey"] = geminiKey
-            if (!groqKey.isNullOrBlank()) data["groqApiKey"] = groqKey
 
             docRef.set(data, SetOptions.merge()).await()
         } catch (e: Exception) {

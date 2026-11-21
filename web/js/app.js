@@ -4,7 +4,7 @@
 
 import { initAuth, loginWithGoogle, logout, getCurrentUser, onUserChanged } from './auth.js';
 import { initDb, saveNote, deleteNote, togglePinNote, onNotesChanged } from './db.js';
-import { refineTextWithAI } from './ai.js';
+import { refineTextWithAI, getGeminiKeys, getGroqKeys, getSelectedModel, getSelectedEngine } from './ai.js';
 import { exportNotePdf } from './pdf.js';
 
 let allNotes = [];
@@ -71,6 +71,8 @@ function setupEventListeners() {
   document.getElementById('settings-btn')?.addEventListener('click', openSettingsModal);
   document.getElementById('close-settings-btn')?.addEventListener('click', closeSettingsModal);
   document.getElementById('save-settings-btn')?.addEventListener('click', saveSettings);
+  document.getElementById('add-gemini-key-btn')?.addEventListener('click', () => window.addGeminiKeyFromInput?.());
+  document.getElementById('add-groq-key-btn')?.addEventListener('click', () => window.addGroqKeyFromInput?.());
 
   // Quick Capture "Refine with AI"
   document.getElementById('refine-btn')?.addEventListener('click', handleRefineNote);
@@ -582,32 +584,31 @@ function handleShareTwitter() {
 }
 
 // ==========================================================================
-// SETTINGS MODAL CONTROLLER
+// SETTINGS MODAL CONTROLLER & MULTI-KEY POOL MANAGEMENT
 // ==========================================================================
+
+function maskKey(key) {
+  if (!key) return '••••••••';
+  const trimmed = key.trim();
+  if (trimmed.length <= 10) return '••••••••';
+  return `${trimmed.slice(0, 6)}...${trimmed.slice(-4)}`;
+}
 
 export function openSettingsModal() {
   const modal = document.getElementById('settings-modal');
   if (!modal) return;
 
-  const key = localStorage.getItem('thoughtdrop_gemini_key') || '';
-  const keyInput = document.getElementById('gemini-key-input');
-  const syncBadge = document.getElementById('gemini-key-sync-badge');
-  const helpText = document.getElementById('gemini-key-help');
+  renderSettingsModalUI();
+  modal.classList.add('active');
+}
 
-  if (keyInput) keyInput.value = key;
+export function closeSettingsModal() {
+  document.getElementById('settings-modal')?.classList.remove('active');
+}
 
+function renderSettingsModalUI() {
+  // 1. Cloud Sync Status
   const user = getCurrentUser();
-  if (user && key) {
-    if (syncBadge) syncBadge.style.display = 'inline-block';
-    if (helpText) helpText.textContent = "✦ Active & synced from your phone. Used for instant PC AI refinement.";
-  } else if (user) {
-    if (syncBadge) syncBadge.style.display = 'none';
-    if (helpText) helpText.textContent = "Checking your phone for active API keys...";
-  } else {
-    if (syncBadge) syncBadge.style.display = 'none';
-    if (helpText) helpText.textContent = "Sign in with Google (top-right) to automatically sync your API key from your phone.";
-  }
-
   const statusText = document.getElementById('settings-cloud-status-text');
   if (statusText) {
     if (user) {
@@ -617,42 +618,199 @@ export function openSettingsModal() {
     }
   }
 
-  modal.classList.add('active');
+  // 2. AI Engine Routing
+  const currentEngine = getSelectedEngine();
+  setEngineSelection(currentEngine, false);
+
+  // 3. Model Selector
+  const currentModel = getSelectedModel();
+  const modelSelect = document.getElementById('gemini-model-select');
+  if (modelSelect) modelSelect.value = currentModel;
+
+  // 4. Gemini Key Pool
+  renderGeminiPool();
+
+  // 5. Groq Key Pool
+  renderGroqPool();
 }
 
-export function closeSettingsModal() {
-  document.getElementById('settings-modal')?.classList.remove('active');
+function renderGeminiPool() {
+  const container = document.getElementById('gemini-pool-container');
+  const counter = document.getElementById('gemini-pool-counter');
+  if (!container) return;
+
+  const pool = getGeminiKeys();
+  const readyCount = pool.filter(k => !k.isExhausted).length;
+  if (counter) counter.textContent = `${readyCount} of ${pool.length} ready`;
+
+  if (pool.length === 0) {
+    container.innerHTML = `
+      <div style="font-size: 11.5px; color: var(--text-muted); padding: 8px 0;">
+        No keys in pool yet. Sign in with Google (top-right) to auto-sync from phone, or add below.
+      </div>
+    `;
+    return;
+  }
+
+  container.innerHTML = pool.map(item => `
+    <div class="key-pool-pill">
+      <div>
+        <span style="font-weight: 600; color: #fff;">${escapeHtml(item.label || 'Gemini Key')}</span>
+        <span style="font-family: var(--font-mono); color: var(--text-muted); margin-left: 6px;">${maskKey(item.key)}</span>
+      </div>
+      <div style="display: flex; align-items: center; gap: 8px;">
+        <span style="font-size: 10.5px; padding: 2px 7px; border-radius: 10px; ${item.isExhausted ? 'background: rgba(239, 68, 68, 0.15); color: #f87171;' : 'background: rgba(16, 185, 129, 0.15); color: #34d399;'}">
+          ${item.isExhausted ? 'Quota Exhausted' : 'Ready'}
+        </span>
+        <button class="btn-glass" onclick="removeGeminiKey('${item.id || item.key}')" style="padding: 2px 6px; font-size: 11px; color: #f87171;" title="Remove Key">&times;</button>
+      </div>
+    </div>
+  `).join('');
+}
+
+function renderGroqPool() {
+  const container = document.getElementById('groq-pool-container');
+  const counter = document.getElementById('groq-pool-counter');
+  if (!container) return;
+
+  const pool = getGroqKeys();
+  const readyCount = pool.filter(k => !k.isExhausted).length;
+  if (counter) counter.textContent = `${readyCount} of ${pool.length} ready`;
+
+  if (pool.length === 0) {
+    container.innerHTML = `
+      <div style="font-size: 11.5px; color: var(--text-muted); padding: 8px 0;">
+        No Groq keys in pool. Add an optional Groq key below for instant quota failover.
+      </div>
+    `;
+    return;
+  }
+
+  container.innerHTML = pool.map(item => `
+    <div class="key-pool-pill">
+      <div>
+        <span style="font-weight: 600; color: #fff;">${escapeHtml(item.label || 'Groq Key')}</span>
+        <span style="font-family: var(--font-mono); color: var(--text-muted); margin-left: 6px;">${maskKey(item.key)}</span>
+      </div>
+      <div style="display: flex; align-items: center; gap: 8px;">
+        <span style="font-size: 10.5px; padding: 2px 7px; border-radius: 10px; ${item.isExhausted ? 'background: rgba(239, 68, 68, 0.15); color: #f87171;' : 'background: rgba(245, 158, 11, 0.15); color: #fbbf24;'}">
+          ${item.isExhausted ? 'Quota Exhausted' : 'Ready'}
+        </span>
+        <button class="btn-glass" onclick="removeGroqKey('${item.id || item.key}')" style="padding: 2px 6px; font-size: 11px; color: #f87171;" title="Remove Key">&times;</button>
+      </div>
+    </div>
+  `).join('');
+}
+
+export function setEngineSelection(engine, saveToStorage = true) {
+  ['auto', 'gemini', 'groq'].forEach(e => {
+    const card = document.getElementById(`engine-card-${e}`);
+    const radio = document.getElementById(`engine-radio-${e}`);
+    if (card && radio) {
+      if (e === engine) {
+        card.classList.add('selected');
+        radio.checked = true;
+      } else {
+        card.classList.remove('selected');
+        radio.checked = false;
+      }
+    }
+  });
+  if (saveToStorage) {
+    localStorage.setItem('thoughtdrop_selected_engine', engine);
+  }
 }
 
 export function saveSettings() {
-  const geminiKey = document.getElementById('gemini-key-input').value.trim();
-
-  if (geminiKey) {
-    localStorage.setItem('thoughtdrop_gemini_key', geminiKey);
-  } else {
-    localStorage.removeItem('thoughtdrop_gemini_key');
+  const modelSelect = document.getElementById('gemini-model-select');
+  if (modelSelect) {
+    localStorage.setItem('thoughtdrop_selected_model', modelSelect.value);
   }
 
   closeSettingsModal();
 }
+
+window.addGeminiKeyFromInput = () => {
+  const input = document.getElementById('add-gemini-key-input');
+  if (!input) return;
+  const key = input.value.trim();
+  if (!key) return;
+
+  const pool = getGeminiKeys();
+  if (!pool.some(k => k.key === key)) {
+    pool.push({
+      id: 'gemini_' + Date.now(),
+      key: key,
+      label: `Gemini Account (${pool.length + 1})`,
+      isExhausted: false
+    });
+    localStorage.setItem('thoughtdrop_gemini_pool', JSON.stringify(pool));
+    localStorage.setItem('thoughtdrop_gemini_key', key);
+  }
+  input.value = '';
+  renderGeminiPool();
+};
+
+window.addGroqKeyFromInput = () => {
+  const input = document.getElementById('add-groq-key-input');
+  if (!input) return;
+  const key = input.value.trim();
+  if (!key) return;
+
+  const pool = getGroqKeys();
+  if (!pool.some(k => k.key === key)) {
+    pool.push({
+      id: 'groq_' + Date.now(),
+      key: key,
+      label: `Groq Account (${pool.length + 1})`,
+      isExhausted: false
+    });
+    localStorage.setItem('thoughtdrop_groq_pool', JSON.stringify(pool));
+    localStorage.setItem('thoughtdrop_groq_key', key);
+  }
+  input.value = '';
+  renderGroqPool();
+};
+
+window.removeGeminiKey = (keyId) => {
+  const pool = getGeminiKeys().filter(k => k.id !== keyId && k.key !== keyId);
+  localStorage.setItem('thoughtdrop_gemini_pool', JSON.stringify(pool));
+  if (pool.length > 0) {
+    localStorage.setItem('thoughtdrop_gemini_key', pool[0].key);
+  } else {
+    localStorage.removeItem('thoughtdrop_gemini_key');
+  }
+  renderGeminiPool();
+};
+
+window.removeGroqKey = (keyId) => {
+  const pool = getGroqKeys().filter(k => k.id !== keyId && k.key !== keyId);
+  localStorage.setItem('thoughtdrop_groq_pool', JSON.stringify(pool));
+  if (pool.length > 0) {
+    localStorage.setItem('thoughtdrop_groq_key', pool[0].key);
+  } else {
+    localStorage.removeItem('thoughtdrop_groq_key');
+  }
+  renderGroqPool();
+};
 
 // Global hooks for HTML inline listeners
 window.openSettingsModal = openSettingsModal;
 window.closeSettingsModal = closeSettingsModal;
 window.saveSettings = saveSettings;
 window.closeAllModals = closeAllModals;
+window.setEngineSelection = setEngineSelection;
+
+// Setup add key button listeners
+document.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('add-gemini-key-btn')?.addEventListener('click', window.addGeminiKeyFromInput);
+  document.getElementById('add-groq-key-btn')?.addEventListener('click', window.addGroqKeyFromInput);
+  document.getElementById('save-settings-btn')?.addEventListener('click', saveSettings);
+});
 
 // Listener when phone app pushes fresh API keys to Firestore
 window.onAiKeysSynced = (data) => {
-  const keyInput = document.getElementById('gemini-key-input');
-  const syncBadge = document.getElementById('gemini-key-sync-badge');
-  const helpText = document.getElementById('gemini-key-help');
-
-  if (keyInput && data.geminiApiKey) {
-    keyInput.value = data.geminiApiKey;
-  }
-  if (syncBadge) syncBadge.style.display = 'inline-block';
-  if (helpText) helpText.textContent = "✦ Automatically synced from your phone via Google Cloud Sync.";
+  renderSettingsModalUI();
 };
 
 function escapeHtml(text) {

@@ -77,6 +77,22 @@ export async function initDb(user) {
             localStorage.setItem('thoughtdrop_groq_key', data.groqApiKey);
             changed = true;
           }
+          if (Array.isArray(data.geminiPool) && data.geminiPool.length > 0) {
+            localStorage.setItem('thoughtdrop_gemini_pool', JSON.stringify(data.geminiPool));
+            changed = true;
+          }
+          if (Array.isArray(data.groqPool) && data.groqPool.length > 0) {
+            localStorage.setItem('thoughtdrop_groq_pool', JSON.stringify(data.groqPool));
+            changed = true;
+          }
+          if (data.selectedModel) {
+            localStorage.setItem('thoughtdrop_selected_model', data.selectedModel);
+            changed = true;
+          }
+          if (data.selectedEngine) {
+            localStorage.setItem('thoughtdrop_selected_engine', data.selectedEngine);
+            changed = true;
+          }
           if (changed && typeof window.onAiKeysSynced === 'function') {
             window.onAiKeysSynced(data);
           }
