@@ -20,13 +20,23 @@ let unsubscribeFirestore = null;
 const notesListeners = [];
 let cachedNotes = [];
 
-export function initDb(user) {
+export async function initDb(user) {
   if (unsubscribeFirestore) {
     unsubscribeFirestore();
     unsubscribeFirestore = null;
   }
 
-  const fbConfigStr = localStorage.getItem('thoughtdrop_firebase_config');
+  let fbConfigStr = localStorage.getItem('thoughtdrop_firebase_config');
+  if (!fbConfigStr) {
+    try {
+      const mod = await import('./firebase-config.js');
+      if (mod.firebaseConfig) {
+        fbConfigStr = JSON.stringify(mod.firebaseConfig);
+        localStorage.setItem('thoughtdrop_firebase_config', fbConfigStr);
+      }
+    } catch (e) {}
+  }
+
   if (fbConfigStr && user && user.isCloud) {
     try {
       const config = JSON.parse(fbConfigStr);

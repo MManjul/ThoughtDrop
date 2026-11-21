@@ -16,29 +16,41 @@ let auth = null;
 let currentUser = null;
 const listeners = [];
 
-export function initAuth() {
+async function resolveFirebaseConfig() {
   const fbConfigStr = localStorage.getItem('thoughtdrop_firebase_config');
   if (fbConfigStr) {
-    try {
-      const config = JSON.parse(fbConfigStr);
-      if (config.apiKey && config.projectId) {
-        const app = getApps().length === 0 ? initializeApp(config) : getApps()[0];
-        auth = getAuth(app);
+    try { return JSON.parse(fbConfigStr); } catch (e) {}
+  }
+  try {
+    const mod = await import('./firebase-config.js');
+    if (mod.firebaseConfig) {
+      localStorage.setItem('thoughtdrop_firebase_config', JSON.stringify(mod.firebaseConfig));
+      return mod.firebaseConfig;
+    }
+  } catch (e) {}
+  return null;
+}
 
-        onAuthStateChanged(auth, (user) => {
-          currentUser = user ? {
-            uid: user.uid,
-            displayName: user.displayName || 'Google User',
-            email: user.email,
-            photoURL: user.photoURL || 'https://www.gravatar.com/avatar?d=mp',
-            isCloud: true
-          } : null;
-          notifyListeners();
-        });
-        return;
-      }
+export async function initAuth() {
+  const config = await resolveFirebaseConfig();
+  if (config && config.apiKey && config.projectId) {
+    try {
+      const app = getApps().length === 0 ? initializeApp(config) : getApps()[0];
+      auth = getAuth(app);
+
+      onAuthStateChanged(auth, (user) => {
+        currentUser = user ? {
+          uid: user.uid,
+          displayName: user.displayName || 'Google User',
+          email: user.email,
+          photoURL: user.photoURL || 'https://www.gravatar.com/avatar?d=mp',
+          isCloud: true
+        } : null;
+        notifyListeners();
+      });
+      return;
     } catch (e) {
-      console.warn("Invalid Firebase config in localStorage, falling back to Local Preview mode:", e);
+      console.warn("Firebase init failed, falling back to local:", e);
     }
   }
 

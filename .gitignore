@@ -48,7 +48,9 @@ captures/
 *.keystore
 
 # Google Services (Firebase)
-# google-services.json
+google-services.json
+app/google-services.json
+web/js/firebase-config.js
 
 # OS specific files
 .DS_Store

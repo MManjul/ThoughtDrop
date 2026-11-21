@@ -914,6 +914,9 @@ fun HomeScreen(
         if (showSettingsDialog) {
             SettingsDialog(
                 settingsRepo = viewModel.settingsRepo,
+                syncManager = viewModel.syncManager,
+                onSignInGoogle = { ctx, cb -> viewModel.signInWithGoogle(ctx, cb) },
+                onSignOutGoogle = { viewModel.signOutCloud() },
                 onDismiss = { showSettingsDialog = false }
             )
         }

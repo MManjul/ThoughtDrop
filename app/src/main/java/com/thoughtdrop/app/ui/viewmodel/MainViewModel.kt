@@ -1,6 +1,15 @@
 package com.thoughtdrop.app.ui.viewmodel
 
 import android.app.Application
+import android.content.Context
+import android.util.Log
+import androidx.credentials.CredentialManager
+import androidx.credentials.CustomCredential
+import androidx.credentials.GetCredentialRequest
+import com.google.android.libraries.identity.googleid.GetGoogleIdOption
+import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
+import com.thoughtdrop.app.R
+import com.thoughtdrop.app.data.sync.FirebaseSyncManager
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.google.gson.Gson
@@ -46,6 +55,19 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val audioPlayer = AudioPlayer(application)
     private val geminiClient = GeminiAudioClient()
     private val groqClient = com.thoughtdrop.app.data.ai.GroqApiClient()
+    val syncManager = FirebaseSyncManager.getInstance()
+
+    init {
+        viewModelScope.launch {
+            syncManager.currentUser.collect { user ->
+                if (user != null) {
+                    syncManager.startSync(noteDao, settingsRepo, viewModelScope)
+                } else {
+                    syncManager.stopSync()
+                }
+            }
+        }
+    }
 
     private val _searchQuery = MutableStateFlow("")
     val searchQuery = _searchQuery.asStateFlow()
@@ -196,7 +218,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         durationSeconds = duration,
                         createdAt = System.currentTimeMillis()
                     )
-                    noteDao.insertNote(note)
+                    val newId = noteDao.insertNote(note)
+                    syncManager.pushNoteToCloud(note.copy(id = newId))
 
                     // Voice Command Handler: Automatically set phone reminder without manual UI interaction
                     if (parsed.hasReminder) {
@@ -329,6 +352,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         imageListJson = note.imageListJson
                     )
                     noteDao.updateNote(updatedNote)
+                    syncManager.pushNoteToCloud(updatedNote)
 
                     // Auto-set phone reminder if voice command was detected in follow-up
                     if (parsed.hasReminder) {
@@ -390,7 +414,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         durationSeconds = 0,
                         createdAt = System.currentTimeMillis()
                     )
-                    noteDao.insertNote(note)
+                    val newId = noteDao.insertNote(note)
+                    syncManager.pushNoteToCloud(note.copy(id = newId))
                     _uiProcessingState.value = UiProcessingState.Idle
                 },
                 onFailure = { error ->
@@ -466,6 +491,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         durationSeconds = note.durationSeconds
                     )
                     noteDao.updateNote(updatedNote)
+                    syncManager.pushNoteToCloud(updatedNote)
                     _followUpState.value = FollowUpState.Idle
                 },
                 onFailure = { error ->
@@ -496,7 +522,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             } else {
                 current.add(actionItem)
             }
-            noteDao.updateNote(note.copy(completedActionsJson = Gson().toJson(current)))
+            val updated = note.copy(completedActionsJson = Gson().toJson(current))
+            noteDao.updateNote(updated)
+            syncManager.pushNoteToCloud(updated)
         }
     }
 
@@ -511,7 +539,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun togglePin(note: NoteEntity) {
         viewModelScope.launch {
-            noteDao.updateNote(note.copy(isPinned = !note.isPinned))
+            val updated = note.copy(isPinned = !note.isPinned)
+            noteDao.updateNote(updated)
+            syncManager.pushNoteToCloud(updated)
         }
     }
 
@@ -523,7 +553,48 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             }
             note.imagePath?.let { try { File(it).delete() } catch (_: Exception) {} }
             noteDao.deleteNote(note)
+            syncManager.deleteNoteFromCloud(note.id)
         }
+    }
+
+    fun signInWithGoogle(context: Context, onComplete: (Boolean, String?) -> Unit) {
+        viewModelScope.launch {
+            try {
+                val credentialManager = CredentialManager.create(context)
+                val serverClientId = context.getString(R.string.default_web_client_id)
+                val googleIdOption = GetGoogleIdOption.Builder()
+                    .setFilterByAuthorizedAccounts(false)
+                    .setServerClientId(serverClientId)
+                    .setAutoSelectEnabled(false)
+                    .build()
+
+                val request = GetCredentialRequest.Builder()
+                    .addCredentialOption(googleIdOption)
+                    .build()
+
+                val result = credentialManager.getCredential(context, request)
+                val credential = result.credential
+                if (credential is CustomCredential && credential.type == GoogleIdTokenCredential.TYPE_GOOGLE_ID_TOKEN_CREDENTIAL) {
+                    val googleIdTokenCredential = GoogleIdTokenCredential.createFrom(credential.data)
+                    val idToken = googleIdTokenCredential.idToken
+                    val authResult = syncManager.signInWithGoogleCredential(idToken)
+                    if (authResult.isSuccess) {
+                        onComplete(true, null)
+                    } else {
+                        onComplete(false, authResult.exceptionOrNull()?.localizedMessage)
+                    }
+                } else {
+                    onComplete(false, "Unexpected credential type")
+                }
+            } catch (e: Exception) {
+                Log.e("MainViewModel", "Google Sign-in failed", e)
+                onComplete(false, e.localizedMessage ?: "Sign-in cancelled or failed")
+            }
+        }
+    }
+
+    fun signOutCloud() {
+        syncManager.signOut()
     }
 
     fun playAudio(note: NoteEntity) {

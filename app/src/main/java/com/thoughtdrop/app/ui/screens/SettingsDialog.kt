@@ -40,6 +40,8 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.thoughtdrop.app.data.repository.ApiKeyEntry
 import com.thoughtdrop.app.data.repository.SettingsRepository
+import com.thoughtdrop.app.data.sync.FirebaseSyncManager
+import com.thoughtdrop.app.data.sync.SyncState
 import com.thoughtdrop.app.ui.theme.*
 import com.thoughtdrop.app.ui.util.BiometricAuthManager
 
@@ -53,6 +55,9 @@ import com.thoughtdrop.app.ui.util.BiometricAuthManager
 @Composable
 fun SettingsDialog(
     settingsRepo: SettingsRepository,
+    syncManager: FirebaseSyncManager = FirebaseSyncManager.getInstance(),
+    onSignInGoogle: ((android.content.Context, (Boolean, String?) -> Unit) -> Unit)? = null,
+    onSignOutGoogle: (() -> Unit)? = null,
     onDismiss: () -> Unit
 ) {
     val context = LocalContext.current
@@ -61,6 +66,12 @@ fun SettingsDialog(
     val activeEngine by settingsRepo.aiEngineFlow.collectAsState()
     val isDeviceLockEnabled by settingsRepo.deviceLockEnabledFlow.collectAsState()
     var selectedModel by remember { mutableStateOf(settingsRepo.getSelectedModel()) }
+
+    // Google Cloud Sync state
+    val currentUser by syncManager.currentUser.collectAsState()
+    val syncState by syncManager.syncState.collectAsState()
+    var isSigningInGoogle by remember { mutableStateOf(false) }
+    var googleSignInError by remember { mutableStateOf<String?>(null) }
 
     // Gemini add key form
     var newGeminiKeyInput by remember { mutableStateOf("") }
@@ -240,6 +251,155 @@ fun SettingsDialog(
                                 color = Color(0xFF9CA3AF),
                                 lineHeight = 16.sp
                             )
+                        }
+                    }
+
+                    // -----------------------------------------------------------------
+                    // SECTION: GOOGLE CLOUD SYNC & WEB STUDIO
+                    // -----------------------------------------------------------------
+                    SectionHeader(
+                        title = "GOOGLE CLOUD SYNC & WEB STUDIO",
+                        subtitle = "Instant bi-directional sync with your PC browser"
+                    )
+
+                    Surface(
+                        shape = RoundedCornerShape(20.dp),
+                        color = cardBackground,
+                        border = BorderStroke(1.dp, if (currentUser != null) accentEmerald.copy(alpha = 0.4f) else Color(0x28FFFFFF)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(modifier = Modifier.padding(18.dp)) {
+                            if (currentUser != null) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(40.dp)
+                                            .background(accentEmerald.copy(alpha = 0.2f), CircleShape)
+                                            .border(BorderStroke(1.dp, accentEmerald), CircleShape),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(
+                                            text = currentUser?.displayName?.take(1)?.uppercase() ?: "G",
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 17.sp,
+                                            color = accentEmerald
+                                        )
+                                    }
+
+                                    Spacer(modifier = Modifier.width(12.dp))
+
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = currentUser?.displayName ?: "Google Account",
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 13.5.sp,
+                                            color = Color.White
+                                        )
+                                        Text(
+                                            text = currentUser?.email ?: "",
+                                            fontSize = 11.5.sp,
+                                            color = Color(0xFF9CA3AF)
+                                        )
+                                    }
+
+                                    TextButton(
+                                        onClick = {
+                                            onSignOutGoogle?.invoke() ?: syncManager.signOut()
+                                        }
+                                    ) {
+                                        Text(
+                                            text = "Sign Out",
+                                            color = Color(0xFFEF4444),
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.SemiBold
+                                        )
+                                    }
+                                }
+
+                                Spacer(modifier = Modifier.height(12.dp))
+
+                                Surface(
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = Color(0x2010B981),
+                                    border = BorderStroke(0.8.dp, accentEmerald.copy(alpha = 0.35f)),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(8.dp)
+                                                .background(accentEmerald, CircleShape)
+                                        )
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Text(
+                                            text = when (syncState) {
+                                                is SyncState.Syncing -> "Syncing with Web Studio..."
+                                                is SyncState.Synced -> "Synced with Web Studio ✦ Live"
+                                                is SyncState.Error -> "Sync error: ${(syncState as SyncState.Error).message}"
+                                                else -> "Live Cloud Sync Active"
+                                            },
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.Medium,
+                                            color = Color(0xFF6EE7B7)
+                                        )
+                                    }
+                                }
+                            } else {
+                                Text(
+                                    text = "Connect with your Google account to automatically share your notes, transcripts, and AI keys with your PC browser in real time.",
+                                    fontSize = 12.5.sp,
+                                    color = Color(0xFFD1D5DB),
+                                    lineHeight = 18.sp
+                                )
+
+                                if (googleSignInError != null) {
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    Text(
+                                        text = googleSignInError!!,
+                                        fontSize = 11.5.sp,
+                                        color = Color(0xFFEF4444)
+                                    )
+                                }
+
+                                Spacer(modifier = Modifier.height(14.dp))
+
+                                Surface(
+                                    shape = RoundedCornerShape(14.dp),
+                                    color = Color(0x20F59E0B),
+                                    border = BorderStroke(1.dp, Color(0x60F59E0B)),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable(enabled = !isSigningInGoogle) {
+                                            isSigningInGoogle = true
+                                            googleSignInError = null
+                                            onSignInGoogle?.invoke(context) { success, err ->
+                                                isSigningInGoogle = false
+                                                if (!success) {
+                                                    googleSignInError = err ?: "Sign in failed"
+                                                }
+                                            }
+                                        }
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(vertical = 12.dp, horizontal = 16.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.Center
+                                    ) {
+                                        Text(
+                                            text = if (isSigningInGoogle) "Connecting to Google..." else "✦ Sign in with Google to Sync",
+                                            color = Color(0xFFFBBF24),
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 13.5.sp
+                                        )
+                                    }
+                                }
+                            }
                         }
                     }
 

@@ -18,6 +18,15 @@ interface NoteDao {
     @Query("SELECT DISTINCT category FROM notes WHERE category != ''")
     fun getCategories(): Flow<List<String>>
 
+    @Query("SELECT * FROM notes WHERE id = :id LIMIT 1")
+    suspend fun getNoteById(id: Long): NoteEntity?
+
+    @Query("SELECT * FROM notes WHERE createdAt = :timestamp LIMIT 1")
+    suspend fun getNoteByCreatedAt(timestamp: Long): NoteEntity?
+
+    @Query("SELECT * FROM notes")
+    suspend fun getAllNotesDirect(): List<NoteEntity>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertNote(note: NoteEntity): Long
 
