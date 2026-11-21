@@ -38,7 +38,7 @@
           </div>
         </div>
 
-        <button class="btn-glass" id="settings-btn" title="Settings (Gemini API &amp; Cloud Sync)">
+        <button class="btn-glass" id="settings-btn" onclick="window.openSettingsModal ? window.openSettingsModal() : document.getElementById('settings-modal').classList.add('active')" title="Settings (Gemini API &amp; Cloud Sync)">
           ⚙ Settings
         </button>
       </div>
@@ -244,9 +244,12 @@
       </div>
 
       <div class="form-group">
-        <label for="gemini-key-input">Gemini API Key (BYOK)</label>
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+          <label for="gemini-key-input" style="margin-bottom: 0;">Gemini API Key</label>
+          <span id="gemini-key-sync-badge" style="font-size: 11px; padding: 2px 8px; border-radius: 12px; background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.3); display: none;">✦ Synced from Phone</span>
+        </div>
         <input type="password" id="gemini-key-input" placeholder="AIzaSy...">
-        <p class="form-help">Used to refine typed notes on PC. Automatically syncs with your phone when signed in.</p>
+        <p class="form-help" id="gemini-key-help">Automatically synced from your phone via Google Cloud Sync. Can also be overridden manually.</p>
         <div style="margin-top: 8px; text-align: right;">
           <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener" style="color: var(--accent-crimson); font-size: 11.5px; text-decoration: none;">Get Free Gemini Key in Google AI Studio &rarr;</a>
         </div>

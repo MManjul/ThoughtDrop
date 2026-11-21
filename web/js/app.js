@@ -13,8 +13,8 @@ let searchQuery = '';
 let currentEditingNote = null;
 let currentSharingNote = null;
 
-// Initialize on DOM Ready
-document.addEventListener('DOMContentLoaded', () => {
+// Initialize on DOM Ready or immediately if DOM is already ready
+function initApp() {
   setupEventListeners();
   initAuth();
 
@@ -35,7 +35,13 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     }
   });
-});
+}
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initApp);
+} else {
+  initApp();
+}
 
 function setupEventListeners() {
   // Global Escape Key Listener - Returns to main page
@@ -579,13 +585,29 @@ function handleShareTwitter() {
 // SETTINGS MODAL CONTROLLER
 // ==========================================================================
 
-function openSettingsModal() {
+export function openSettingsModal() {
   const modal = document.getElementById('settings-modal');
   if (!modal) return;
 
-  document.getElementById('gemini-key-input').value = localStorage.getItem('thoughtdrop_gemini_key') || '';
+  const key = localStorage.getItem('thoughtdrop_gemini_key') || '';
+  const keyInput = document.getElementById('gemini-key-input');
+  const syncBadge = document.getElementById('gemini-key-sync-badge');
+  const helpText = document.getElementById('gemini-key-help');
 
-  const user = window.ThoughtDropAuth?.getCurrentUser();
+  if (keyInput) keyInput.value = key;
+
+  const user = getCurrentUser();
+  if (user && key) {
+    if (syncBadge) syncBadge.style.display = 'inline-block';
+    if (helpText) helpText.textContent = "✦ Active & synced from your phone. Used for instant PC AI refinement.";
+  } else if (user) {
+    if (syncBadge) syncBadge.style.display = 'none';
+    if (helpText) helpText.textContent = "Checking your phone for active API keys...";
+  } else {
+    if (syncBadge) syncBadge.style.display = 'none';
+    if (helpText) helpText.textContent = "Sign in with Google (top-right) to automatically sync your API key from your phone.";
+  }
+
   const statusText = document.getElementById('settings-cloud-status-text');
   if (statusText) {
     if (user) {
@@ -598,11 +620,11 @@ function openSettingsModal() {
   modal.classList.add('active');
 }
 
-function closeSettingsModal() {
+export function closeSettingsModal() {
   document.getElementById('settings-modal')?.classList.remove('active');
 }
 
-function saveSettings() {
+export function saveSettings() {
   const geminiKey = document.getElementById('gemini-key-input').value.trim();
 
   if (geminiKey) {
@@ -613,6 +635,25 @@ function saveSettings() {
 
   closeSettingsModal();
 }
+
+// Global hooks for HTML inline listeners
+window.openSettingsModal = openSettingsModal;
+window.closeSettingsModal = closeSettingsModal;
+window.saveSettings = saveSettings;
+window.closeAllModals = closeAllModals;
+
+// Listener when phone app pushes fresh API keys to Firestore
+window.onAiKeysSynced = (data) => {
+  const keyInput = document.getElementById('gemini-key-input');
+  const syncBadge = document.getElementById('gemini-key-sync-badge');
+  const helpText = document.getElementById('gemini-key-help');
+
+  if (keyInput && data.geminiApiKey) {
+    keyInput.value = data.geminiApiKey;
+  }
+  if (syncBadge) syncBadge.style.display = 'inline-block';
+  if (helpText) helpText.textContent = "✦ Automatically synced from your phone via Google Cloud Sync.";
+};
 
 function escapeHtml(text) {
   if (!text) return '';

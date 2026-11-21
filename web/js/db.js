@@ -17,6 +17,7 @@ import {
 
 let db = null;
 let unsubscribeFirestore = null;
+let unsubscribeSettings = null;
 const notesListeners = [];
 let cachedNotes = [];
 
@@ -24,6 +25,10 @@ export async function initDb(user) {
   if (unsubscribeFirestore) {
     unsubscribeFirestore();
     unsubscribeFirestore = null;
+  }
+  if (unsubscribeSettings) {
+    unsubscribeSettings();
+    unsubscribeSettings = null;
   }
 
   let fbConfigStr = localStorage.getItem('thoughtdrop_firebase_config');
@@ -43,6 +48,7 @@ export async function initDb(user) {
       const app = getApps().length === 0 ? initializeApp(config) : getApps()[0];
       db = getFirestore(app);
 
+      // 1. Real-time Notes Listener
       const notesRef = collection(db, 'users', user.uid, 'notes');
       const q = query(notesRef, orderBy('createdAt', 'desc'));
 
@@ -56,6 +62,29 @@ export async function initDb(user) {
         console.error("Firestore listener error, falling back to local:", err);
         loadLocalNotes();
       });
+
+      // 2. Real-time AI Keys Sync from Phone App
+      const settingsRef = doc(db, 'users', user.uid, 'settings', 'ai_keys');
+      unsubscribeSettings = onSnapshot(settingsRef, (docSnap) => {
+        if (docSnap.exists()) {
+          const data = docSnap.data();
+          let changed = false;
+          if (data.geminiApiKey) {
+            localStorage.setItem('thoughtdrop_gemini_key', data.geminiApiKey);
+            changed = true;
+          }
+          if (data.groqApiKey) {
+            localStorage.setItem('thoughtdrop_groq_key', data.groqApiKey);
+            changed = true;
+          }
+          if (changed && typeof window.onAiKeysSynced === 'function') {
+            window.onAiKeysSynced(data);
+          }
+        }
+      }, (err) => {
+        console.warn("Firestore settings sync notice:", err);
+      });
+
       return;
     } catch (e) {
       console.warn("Firestore init failed:", e);
