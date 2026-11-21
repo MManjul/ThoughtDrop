@@ -15,6 +15,15 @@ import {
   orderBy 
 } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 
+const DEFAULT_FIREBASE_CONFIG = {
+  apiKey: "AIzaSyC5Iy3MvBYQyxLnOpnatl_tHFBntFYLFMs",
+  authDomain: "thoughtdrop-4f22e.firebaseapp.com",
+  projectId: "thoughtdrop-4f22e",
+  storageBucket: "thoughtdrop-4f22e.firebasestorage.app",
+  messagingSenderId: "599762645775",
+  appId: "1:599762645775:web:ac57fbe0c002a5849a047a"
+};
+
 let db = null;
 let unsubscribeFirestore = null;
 let unsubscribeSettings = null;
@@ -39,7 +48,13 @@ export async function initDb(user) {
         fbConfigStr = JSON.stringify(mod.firebaseConfig);
         localStorage.setItem('thoughtdrop_firebase_config', fbConfigStr);
       }
-    } catch (e) {}
+    } catch (e) {
+      fbConfigStr = JSON.stringify(DEFAULT_FIREBASE_CONFIG);
+      localStorage.setItem('thoughtdrop_firebase_config', fbConfigStr);
+    }
+  }
+  if (!fbConfigStr) {
+    fbConfigStr = JSON.stringify(DEFAULT_FIREBASE_CONFIG);
   }
 
   if (fbConfigStr && user && user.isCloud) {

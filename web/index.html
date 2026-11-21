@@ -32,11 +32,15 @@
       </div>
 
       <div class="header-actions">
-        <div class="auth-pill" id="auth-btn" title="Click to manage account">
+        <div class="auth-pill" id="auth-btn" title="Click to sign in / manage account">
           <div id="auth-pill-content">
             <span style="color: var(--accent-crimson); font-weight: 700;">✦ Sign in with Google</span>
           </div>
         </div>
+
+        <button class="btn-glass" id="logout-btn" style="display: none; padding: 7px 12px; font-size: 12px; font-weight: 600; color: var(--accent-crimson); border-color: rgba(255, 51, 102, 0.35); align-items: center; gap: 6px;" title="Sign out of account">
+          <span>🚪</span><span>Sign out</span>
+        </button>
 
         <button class="btn-glass" id="settings-btn" onclick="window.openSettingsModal ? window.openSettingsModal() : document.getElementById('settings-modal').classList.add('active')" title="Settings (Gemini API &amp; Cloud Sync)">
           ⚙ Settings
@@ -254,10 +258,13 @@
       <!-- Cloud Sync Status Card -->
       <div class="cloud-status-box" id="settings-cloud-status" style="padding: 12px 14px; border-radius: 12px; background: rgba(16, 185, 129, 0.08); border: 1px solid rgba(16, 185, 129, 0.25); display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px;">
         <div style="display: flex; align-items: center; gap: 8px;">
-          <span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #10b981;"></span>
+          <span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #10b981;" id="cloud-status-dot"></span>
           <span style="font-size: 12.5px; color: #6ee7b7; font-weight: 600;" id="settings-cloud-status-text">Cloud Sync Connected</span>
         </div>
-        <span style="font-size: 11px; color: var(--text-muted); font-family: var(--font-mono);">thoughtdrop-4f22e</span>
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <span style="font-size: 11px; color: var(--text-muted); font-family: var(--font-mono);">thoughtdrop-4f22e</span>
+          <button class="btn-glass" id="modal-logout-btn" style="display: none; padding: 4px 10px; font-size: 11px; color: var(--accent-crimson); border-color: rgba(255, 51, 102, 0.3);">Sign out</button>
+        </div>
       </div>
 
       <!-- Section: AI Engine Routing -->

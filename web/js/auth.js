@@ -12,6 +12,15 @@ import {
   onAuthStateChanged 
 } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
 
+const DEFAULT_FIREBASE_CONFIG = {
+  apiKey: "AIzaSyC5Iy3MvBYQyxLnOpnatl_tHFBntFYLFMs",
+  authDomain: "thoughtdrop-4f22e.firebaseapp.com",
+  projectId: "thoughtdrop-4f22e",
+  storageBucket: "thoughtdrop-4f22e.firebasestorage.app",
+  messagingSenderId: "599762645775",
+  appId: "1:599762645775:web:ac57fbe0c002a5849a047a"
+};
+
 let auth = null;
 let currentUser = null;
 const listeners = [];
@@ -28,7 +37,8 @@ async function resolveFirebaseConfig() {
       return mod.firebaseConfig;
     }
   } catch (e) {}
-  return null;
+  localStorage.setItem('thoughtdrop_firebase_config', JSON.stringify(DEFAULT_FIREBASE_CONFIG));
+  return DEFAULT_FIREBASE_CONFIG;
 }
 
 export async function initAuth() {
@@ -74,6 +84,7 @@ export async function initAuth() {
 export async function loginWithGoogle() {
   if (auth) {
     const provider = new GoogleAuthProvider();
+    provider.setCustomParameters({ prompt: 'select_account' });
     try {
       const result = await signInWithPopup(auth, provider);
       currentUser = {
@@ -83,6 +94,7 @@ export async function loginWithGoogle() {
         photoURL: result.user.photoURL,
         isCloud: true
       };
+      localStorage.removeItem('thoughtdrop_local_user');
       notifyListeners();
       return currentUser;
     } catch (error) {
@@ -105,8 +117,12 @@ export async function loginWithGoogle() {
 }
 
 export async function logout() {
-  if (auth && currentUser?.isCloud) {
-    await fbSignOut(auth);
+  if (auth) {
+    try {
+      await fbSignOut(auth);
+    } catch (e) {
+      console.warn("Firebase sign out:", e);
+    }
   }
   currentUser = null;
   localStorage.removeItem('thoughtdrop_local_user');

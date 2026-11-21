@@ -55,17 +55,33 @@ function setupEventListeners() {
   document.getElementById('auth-btn')?.addEventListener('click', async () => {
     const user = getCurrentUser();
     if (user && user.isCloud) {
-      if (confirm("Do you want to sign out?")) {
+      if (confirm(`Signed in as ${user.displayName} (${user.email || 'Google'}). Do you want to sign out?`)) {
         await logout();
       }
     } else {
       try {
         await loginWithGoogle();
       } catch (err) {
-        alert("Google Sign-in failed: " + err.message);
+        if (err.code === 'auth/unauthorized-domain') {
+          alert(`Google Sign-In Notice:
+Domain "${window.location.hostname}" is not yet authorized in your Firebase Project.
+Please go to:
+Firebase Console -> Authentication -> Settings -> Authorized Domains -> click "Add domain" and enter "${window.location.hostname}".`);
+        } else {
+          alert("Google Sign-in failed: " + err.message);
+        }
       }
     }
   });
+
+  // Dedicated Logout buttons
+  const handleSignOutAction = async () => {
+    if (confirm("Are you sure you want to sign out of Google?")) {
+      await logout();
+    }
+  };
+  document.getElementById('logout-btn')?.addEventListener('click', handleSignOutAction);
+  document.getElementById('modal-logout-btn')?.addEventListener('click', handleSignOutAction);
 
   // Settings Modal triggers
   document.getElementById('settings-btn')?.addEventListener('click', openSettingsModal);
@@ -161,18 +177,30 @@ function closeAllModals() {
 
 function updateAuthUI(user) {
   const authPill = document.getElementById('auth-pill-content');
+  const logoutBtn = document.getElementById('logout-btn');
+  const modalLogoutBtn = document.getElementById('modal-logout-btn');
+  const cloudStatusText = document.getElementById('settings-cloud-status-text');
+  const cloudStatusDot = document.getElementById('cloud-status-dot');
   if (!authPill) return;
 
-  if (user) {
+  if (user && user.isCloud) {
     authPill.innerHTML = `
       <img src="${user.photoURL}" class="avatar" alt="User">
-      <span style="font-weight: 600;">${user.displayName}</span>
-      <span style="font-size: 11px; opacity: 0.6;">${user.isCloud ? '(Google)' : '(Local)'}</span>
+      <span style="font-weight: 600;">${escapeHtml(user.displayName)}</span>
+      <span style="font-size: 11px; opacity: 0.6;">(Google)</span>
     `;
+    if (logoutBtn) logoutBtn.style.display = 'inline-flex';
+    if (modalLogoutBtn) modalLogoutBtn.style.display = 'inline-block';
+    if (cloudStatusText) cloudStatusText.innerText = `Cloud Sync Connected (${user.email || user.displayName})`;
+    if (cloudStatusDot) cloudStatusDot.style.background = '#10b981';
   } else {
     authPill.innerHTML = `
       <span style="color: var(--accent-crimson); font-weight: 700;">✦ Sign in with Google</span>
     `;
+    if (logoutBtn) logoutBtn.style.display = 'none';
+    if (modalLogoutBtn) modalLogoutBtn.style.display = 'none';
+    if (cloudStatusText) cloudStatusText.innerText = 'Not Signed In (Click "Sign in with Google" to sync with phone)';
+    if (cloudStatusDot) cloudStatusDot.style.background = '#f59e0b';
   }
 }
 
