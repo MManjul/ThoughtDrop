@@ -109,6 +109,16 @@ function setupEventListeners() {
     if (currentEditingNote) openShareModal(currentEditingNote);
   });
 
+  // Note Detail Modal: Delete
+  document.getElementById('detail-delete-btn')?.addEventListener('click', () => {
+    if (!currentEditingNote) return;
+    if (confirm("Delete this note permanently from all devices?")) {
+      const idToDelete = currentEditingNote.id;
+      closeDetailModal();
+      deleteNote(idToDelete, getCurrentUser());
+    }
+  });
+
   // Note Detail Modal: Switch to Content Edit Mode
   document.getElementById('open-edit-mode-btn')?.addEventListener('click', () => {
     switchDetailMode('edit');

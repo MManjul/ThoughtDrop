@@ -56,7 +56,7 @@ export async function initDb(user) {
         cachedNotes = snapshot.docs.map(doc => ({
           id: doc.id,
           ...doc.data()
-        }));
+        })).filter(n => !n.isDeleted);
         notifyNotesChanged();
       }, (err) => {
         console.error("Firestore listener error, falling back to local:", err);
@@ -153,7 +153,7 @@ function saveLocalNotes() {
 }
 
 export async function saveNote(note, user) {
-  const noteId = note.id || 'note_' + Date.now();
+  const noteId = note.id ? String(note.id) : String(note.createdAt || Date.now());
   const noteData = {
     ...note,
     id: noteId,
@@ -165,6 +165,9 @@ export async function saveNote(note, user) {
     try {
       const docRef = doc(db, 'users', user.uid, 'notes', noteId);
       await setDoc(docRef, noteData, { merge: true });
+      // Clean up tombstone if present
+      const tombstoneRef = doc(db, 'users', user.uid, 'deleted_notes', noteId);
+      deleteDoc(tombstoneRef).catch(() => {});
       return noteData;
     } catch (err) {
       console.error("Firestore save failed, saving locally:", err);
@@ -172,7 +175,7 @@ export async function saveNote(note, user) {
   }
 
   // Local save
-  const existingIdx = cachedNotes.findIndex(n => n.id === noteId);
+  const existingIdx = cachedNotes.findIndex(n => String(n.id) === String(noteId));
   if (existingIdx >= 0) {
     cachedNotes[existingIdx] = noteData;
   } else {
@@ -184,16 +187,38 @@ export async function saveNote(note, user) {
 }
 
 export async function deleteNote(noteId, user) {
+  const idStr = String(noteId);
+  const rawTs = idStr.replace(/^note_/, '');
+
   if (db && user && user.isCloud) {
     try {
-      const docRef = doc(db, 'users', user.uid, 'notes', noteId);
-      await deleteDoc(docRef);
+      // 1. Delete note document(s) from Firestore
+      const docRef1 = doc(db, 'users', user.uid, 'notes', idStr);
+      await deleteDoc(docRef1);
+
+      if (rawTs !== idStr) {
+        const docRef2 = doc(db, 'users', user.uid, 'notes', rawTs);
+        await deleteDoc(docRef2).catch(() => {});
+      } else {
+        const docRef2 = doc(db, 'users', user.uid, 'notes', 'note_' + idStr);
+        await deleteDoc(docRef2).catch(() => {});
+      }
+
+      // 2. Add to deleted_notes tombstone collection so phone immediately purges it
+      const tombstoneData = { id: idStr, deletedAt: Date.now() };
+      const tombstoneRef1 = doc(db, 'users', user.uid, 'deleted_notes', idStr);
+      await setDoc(tombstoneRef1, tombstoneData).catch(() => {});
+
+      if (rawTs !== idStr) {
+        const tombstoneRef2 = doc(db, 'users', user.uid, 'deleted_notes', rawTs);
+        await setDoc(tombstoneRef2, tombstoneData).catch(() => {});
+      }
     } catch (err) {
       console.error("Firestore delete failed:", err);
     }
   }
 
-  cachedNotes = cachedNotes.filter(n => n.id !== noteId);
+  cachedNotes = cachedNotes.filter(n => String(n.id) !== idStr && String(n.id) !== rawTs);
   saveLocalNotes();
   notifyNotesChanged();
 }
