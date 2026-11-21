@@ -1,7 +1,11 @@
 package com.thoughtdrop.app.ui.screens
 
+import android.app.Activity
 import android.content.Intent
 import android.net.Uri
+import android.util.Log
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -38,12 +42,17 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import com.google.android.gms.auth.api.signin.GoogleSignIn
+import com.google.android.gms.auth.api.signin.GoogleSignInOptions
+import com.google.android.gms.common.api.ApiException
+import com.thoughtdrop.app.R
 import com.thoughtdrop.app.data.repository.ApiKeyEntry
 import com.thoughtdrop.app.data.repository.SettingsRepository
 import com.thoughtdrop.app.data.sync.FirebaseSyncManager
 import com.thoughtdrop.app.data.sync.SyncState
 import com.thoughtdrop.app.ui.theme.*
 import com.thoughtdrop.app.ui.util.BiometricAuthManager
+import kotlinx.coroutines.launch
 
 /**
  * Full-Screen Non-Transparent Settings & AI Engine Screen
@@ -61,6 +70,7 @@ fun SettingsDialog(
     onDismiss: () -> Unit
 ) {
     val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
     val geminiPool by settingsRepo.apiKeyPoolFlow.collectAsState()
     val groqPool by settingsRepo.groqPoolFlow.collectAsState()
     val activeEngine by settingsRepo.aiEngineFlow.collectAsState()
@@ -72,6 +82,39 @@ fun SettingsDialog(
     val syncState by syncManager.syncState.collectAsState()
     var isSigningInGoogle by remember { mutableStateOf(false) }
     var googleSignInError by remember { mutableStateOf<String?>(null) }
+
+    // Google Play Services Sign-In Activity Launcher
+    val googleSignInLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        isSigningInGoogle = false
+        if (result.resultCode == Activity.RESULT_OK) {
+            val task = GoogleSignIn.getSignedInAccountFromIntent(result.data)
+            try {
+                val account = task.getResult(ApiException::class.java)
+                val idToken = account?.idToken
+                if (!idToken.isNullOrBlank()) {
+                    coroutineScope.launch {
+                        val authResult = syncManager.signInWithGoogleCredential(idToken)
+                        if (!authResult.isSuccess) {
+                            googleSignInError = authResult.exceptionOrNull()?.localizedMessage ?: "Sign-in failed"
+                        }
+                    }
+                } else {
+                    googleSignInError = "Google account selected, but no ID token was returned"
+                }
+            } catch (e: ApiException) {
+                Log.e("SettingsDialog", "Google Sign-In ApiException: ${e.statusCode} ${e.message}", e)
+                googleSignInError = "Google Sign-in (${e.statusCode}): ${e.localizedMessage ?: "Failed"}"
+            } catch (e: Exception) {
+                Log.e("SettingsDialog", "Google Sign-In failed", e)
+                googleSignInError = e.localizedMessage ?: "Sign-in failed"
+            }
+        } else {
+            // Dismissed or cancelled by user
+            googleSignInError = null
+        }
+    }
 
     // Gemini add key form
     var newGeminiKeyInput by remember { mutableStateOf("") }
@@ -307,6 +350,10 @@ fun SettingsDialog(
 
                                     TextButton(
                                         onClick = {
+                                            try {
+                                                val gso = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN).build()
+                                                GoogleSignIn.getClient(context, gso).signOut()
+                                            } catch (_: Exception) {}
                                             onSignOutGoogle?.invoke() ?: syncManager.signOut()
                                         }
                                     ) {
@@ -378,11 +425,25 @@ fun SettingsDialog(
                                         .clickable(enabled = !isSigningInGoogle) {
                                             isSigningInGoogle = true
                                             googleSignInError = null
-                                            onSignInGoogle?.invoke(context) { success, err ->
-                                                isSigningInGoogle = false
-                                                if (!success) {
-                                                    googleSignInError = err ?: "Sign in failed"
+                                            try {
+                                                val serverClientId = context.getString(R.string.default_web_client_id)
+                                                val gso = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
+                                                    .requestIdToken(serverClientId)
+                                                    .requestEmail()
+                                                    .requestProfile()
+                                                    .build()
+                                                val client = GoogleSignIn.getClient(context, gso)
+                                                client.signOut().addOnCompleteListener {
+                                                    try {
+                                                        googleSignInLauncher.launch(client.signInIntent)
+                                                    } catch (e: Exception) {
+                                                        isSigningInGoogle = false
+                                                        googleSignInError = "Cannot open account picker: ${e.localizedMessage}"
+                                                    }
                                                 }
+                                            } catch (e: Exception) {
+                                                isSigningInGoogle = false
+                                                googleSignInError = "Sign-in error: ${e.localizedMessage}"
                                             }
                                         }
                                 ) {
