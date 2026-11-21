@@ -32,6 +32,7 @@ import androidx.compose.material.icons.outlined.Circle
 import androidx.compose.material.icons.outlined.DeleteOutline
 import androidx.compose.material.icons.outlined.GraphicEq
 import androidx.compose.material.icons.outlined.Image
+import androidx.compose.material.icons.outlined.PictureAsPdf
 import androidx.compose.material.icons.outlined.PushPin
 import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material3.*
@@ -58,6 +59,7 @@ import com.thoughtdrop.app.ui.util.FullScreenImageViewerDialog
 import com.thoughtdrop.app.ui.util.ImageUtils
 import com.thoughtdrop.app.ui.util.ModernGlassCheckbox
 import com.thoughtdrop.app.ui.util.NoteImageCard
+import com.thoughtdrop.app.ui.util.PdfExportUtils
 import com.thoughtdrop.app.ui.viewmodel.FollowUpState
 import java.io.File
 
@@ -293,6 +295,26 @@ fun NoteDetailBottomSheet(
                             if (note.isPinned) Icons.Filled.PushPin else Icons.Outlined.PushPin,
                             contentDescription = "Pin Note",
                             tint = if (note.isPinned) AccentMintBright else TextSecondary,
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
+
+                    // Export High-Quality Executive PDF
+                    Box(
+                        modifier = Modifier
+                            .size(34.dp)
+                            .clip(CircleShape)
+                            .background(GlassSurfaceHighlight, CircleShape)
+                            .border(BorderStroke(0.8.dp, GlassBorderBrush), CircleShape)
+                            .clickable {
+                                PdfExportUtils.exportNoteAsPdf(context, note)
+                            },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            Icons.Outlined.PictureAsPdf,
+                            contentDescription = "Export PDF",
+                            tint = AccentMintBright,
                             modifier = Modifier.size(16.dp)
                         )
                     }
