@@ -49,7 +49,6 @@ object PdfExportUtils {
 
         val keyPoints = note.getKeyPoints()
         val actionItems = note.getActionItems()
-        val completedActions = note.getCompletedActions()
 
         val categoryColor = when (note.category.lowercase()) {
             "work" -> "#3b82f6"       // Sapphire Blue
@@ -86,21 +85,13 @@ object PdfExportUtils {
             """
             <div class="section">
                 <div class="section-title">
-                    <span class="icon">☑</span> ACTION ITEMS & NEXT STEPS
+                    <span class="icon">✦</span> ACTION ITEMS & NEXT STEPS
                 </div>
-                <div class="action-list">
+                <ul class="bullet-list">
                     ${actionItems.joinToString("") { item ->
-                        val isDone = completedActions.contains(item)
-                        val checkClass = if (isDone) "done" else "pending"
-                        val checkIcon = if (isDone) "&#x2714;" else ""
-                        """
-                        <div class="action-item $checkClass">
-                            <div class="checkbox $checkClass">$checkIcon</div>
-                            <div class="action-text">$item</div>
-                        </div>
-                        """.trimIndent()
+                        "<li><span class=\"bullet\">•</span><span class=\"bullet-text\">${escapeHtml(item)}</span></li>"
                     }}
-                </div>
+                </ul>
             </div>
             """.trimIndent()
         } else ""
@@ -244,51 +235,6 @@ object PdfExportUtils {
                 }
                 .bullet-text {
                     flex: 1;
-                }
-                .action-list {
-                    display: flex;
-                    flex-direction: column;
-                    gap: 8px;
-                }
-                .action-item {
-                    display: flex;
-                    align-items: flex-start;
-                    padding: 8px 12px;
-                    background: #f8fafc;
-                    border: 1px solid #e2e8f0;
-                    border-radius: 6px;
-                }
-                .action-item.done {
-                    background: #f1f5f9;
-                    opacity: 0.65;
-                }
-                .checkbox {
-                    width: 16px;
-                    height: 16px;
-                    border: 1.5px solid #94a3b8;
-                    border-radius: 4px;
-                    margin-right: 10px;
-                    margin-top: 2px;
-                    display: flex;
-                    align-items: center;
-                    justify-content: center;
-                    font-size: 11px;
-                    font-weight: bold;
-                    flex-shrink: 0;
-                }
-                .checkbox.done {
-                    background: #10b981;
-                    border-color: #10b981;
-                    color: #ffffff;
-                }
-                .action-text {
-                    font-size: 13px;
-                    color: #1e293b;
-                    line-height: 1.45;
-                }
-                .action-item.done .action-text {
-                    text-decoration: line-through;
-                    color: #64748b;
                 }
                 .transcript-box {
                     background: #f8fafc;
