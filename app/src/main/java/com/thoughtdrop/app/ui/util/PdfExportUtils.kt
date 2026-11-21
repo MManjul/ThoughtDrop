@@ -50,23 +50,11 @@ object PdfExportUtils {
         val keyPoints = note.getKeyPoints()
         val actionItems = note.getActionItems()
 
-        val categoryColor = when (note.category.lowercase()) {
-            "work" -> "#3b82f6"       // Sapphire Blue
-            "finance" -> "#10b981"    // Emerald Green
-            "personal" -> "#f59e0b"   // Amber Gold
-            "creative" -> "#ec4899"   // Rose Magenta
-            "health" -> "#06b6d4"     // Cyan Teal
-            else -> "#10b981"         // Default Mint Emerald
-        }
-
-        val categoryBg = when (note.category.lowercase()) {
-            "work" -> "#eff6ff"
-            "finance" -> "#ecfdf5"
-            "personal" -> "#fffbeb"
-            "creative" -> "#fdf2f8"
-            "health" -> "#ecfeff"
-            else -> "#ecfdf5"
-        }
+        // Crimson Red & Ruby Theme (matching mayankmanjul.com HUD Crimson)
+        val crimsonPrimary = "#ff3366"
+        val crimsonRuby = "#e11d48"
+        val crimsonBgTint = "#fff1f3"
+        val crimsonBorder = "#fecdd3"
 
         val keyPointsHtml = if (keyPoints.isNotEmpty()) {
             """
@@ -135,7 +123,7 @@ object PdfExportUtils {
                     line-height: 1.55;
                 }
                 .header {
-                    border-bottom: 2px solid #0f172a;
+                    border-bottom: 2px solid $crimsonPrimary;
                     padding-bottom: 12px;
                     margin-bottom: 20px;
                     display: flex;
@@ -146,7 +134,7 @@ object PdfExportUtils {
                     font-size: 15px;
                     font-weight: 800;
                     letter-spacing: 1.5px;
-                    color: #059669;
+                    color: $crimsonPrimary;
                     text-transform: uppercase;
                 }
                 .brand-sub {
@@ -167,9 +155,9 @@ object PdfExportUtils {
                     text-transform: uppercase;
                     padding: 3px 10px;
                     border-radius: 9999px;
-                    color: $categoryColor;
-                    background: $categoryBg;
-                    border: 1px solid $categoryColor;
+                    color: $crimsonRuby;
+                    background: $crimsonBgTint;
+                    border: 1px solid $crimsonBorder;
                 }
                 .date-text {
                     font-size: 10.5px;
@@ -184,14 +172,17 @@ object PdfExportUtils {
                     margin: 0 0 16px 0;
                 }
                 .summary-card {
-                    background: #f8fafc;
-                    border-left: 4px solid #10b981;
+                    background: #fff5f7;
+                    border-left: 4px solid $crimsonPrimary;
                     border-radius: 0 8px 8px 0;
                     padding: 14px 18px;
                     margin-bottom: 22px;
                     font-size: 14px;
                     line-height: 1.6;
-                    color: #334155;
+                    color: #1e293b;
+                    border-top: 1px solid #ffe4e6;
+                    border-right: 1px solid #ffe4e6;
+                    border-bottom: 1px solid #ffe4e6;
                 }
                 .section {
                     margin-bottom: 20px;
@@ -208,7 +199,7 @@ object PdfExportUtils {
                     align-items: center;
                 }
                 .section-title .icon {
-                    color: #10b981;
+                    color: $crimsonPrimary;
                     font-size: 13px;
                     margin-right: 6px;
                 }
@@ -226,9 +217,9 @@ object PdfExportUtils {
                     color: #1e293b;
                 }
                 .bullet {
-                    color: #10b981;
+                    color: $crimsonPrimary;
                     font-weight: 900;
-                    font-size: 18px;
+                    font-size: 19px;
                     line-height: 1.2;
                     margin-right: 10px;
                     flex-shrink: 0;
@@ -250,11 +241,15 @@ object PdfExportUtils {
                 .footer {
                     margin-top: 30px;
                     padding-top: 12px;
-                    border-top: 1px solid #e2e8f0;
+                    border-top: 1px solid #fecdd3;
                     display: flex;
                     justify-content: space-between;
                     font-size: 10px;
                     color: #94a3b8;
+                }
+                .footer-brand {
+                    color: $crimsonRuby;
+                    font-weight: 600;
                 }
             </style>
         </head>
@@ -283,7 +278,7 @@ object PdfExportUtils {
             $transcriptHtml
 
             <div class="footer">
-                <span>ThoughtDrop • Personal & Confidential</span>
+                <span class="footer-brand">ThoughtDrop • Personal & Confidential</span>
                 <span>Exported via AI Note Studio</span>
             </div>
         </body>
