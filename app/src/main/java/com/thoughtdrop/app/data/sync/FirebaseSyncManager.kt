@@ -119,9 +119,12 @@ class FirebaseSyncManager private constructor() {
                             val keyPointsList = data["keyPoints"] as? List<String> ?: emptyList()
                             @Suppress("UNCHECKED_CAST")
                             val actionItemsList = data["actionItems"] as? List<String> ?: emptyList()
+                            @Suppress("UNCHECKED_CAST")
+                            val completedList = data["completedActions"] as? List<String> ?: emptyList()
 
                             val keyPointsJson = gson.toJson(keyPointsList)
                             val actionItemsJson = gson.toJson(actionItemsList)
+                            val completedActionsJson = gson.toJson(completedList.toSet())
 
                             val existingNote = noteDao.getNoteById(cloudId) ?: noteDao.getNoteByCreatedAt(rawCreatedAt)
                             if (existingNote == null) {
@@ -133,6 +136,7 @@ class FirebaseSyncManager private constructor() {
                                     summary = summary,
                                     keyPointsJson = keyPointsJson,
                                     actionItemsJson = actionItemsJson,
+                                    completedActionsJson = completedActionsJson,
                                     transcript = transcript,
                                     isPinned = isPinned,
                                     createdAt = rawCreatedAt
@@ -146,6 +150,7 @@ class FirebaseSyncManager private constructor() {
                                     summary = summary,
                                     keyPointsJson = keyPointsJson,
                                     actionItemsJson = actionItemsJson,
+                                    completedActionsJson = completedActionsJson,
                                     isPinned = isPinned
                                 )
                                 noteDao.updateNote(updated)
@@ -227,6 +232,7 @@ class FirebaseSyncManager private constructor() {
                 "summary" to note.summary,
                 "keyPoints" to note.getKeyPoints(),
                 "actionItems" to note.getActionItems(),
+                "completedActions" to note.getCompletedActions().toList(),
                 "transcript" to note.transcript,
                 "isPinned" to note.isPinned,
                 "createdAt" to note.createdAt,

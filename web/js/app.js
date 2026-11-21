@@ -284,6 +284,18 @@ function renderNotesGrid() {
       <li><span class="dot">•</span><span>${escapeHtml(p)}</span></li>
     `).join('');
 
+    const actionItems = Array.isArray(note.actionItems) ? note.actionItems.slice(0, 2) : [];
+    const completedList = Array.isArray(note.completedActions) ? note.completedActions : [];
+    const tasksPreview = actionItems.map((task, idx) => {
+      const isDone = completedList.includes(task);
+      return `
+        <div class="card-task-row ${isDone ? 'completed' : ''}" data-action="toggle-task" data-note-id="${note.id}" data-task-idx="${idx}">
+          <div class="task-checkbox">${isDone ? '✓' : ''}</div>
+          <span class="task-text">${escapeHtml(task)}</span>
+        </div>
+      `;
+    }).join('');
+
     return `
       <div class="note-card" data-id="${note.id}">
         <div class="note-card-header">
@@ -295,6 +307,7 @@ function renderNotesGrid() {
         <p class="note-card-summary">${escapeHtml(note.summary || '')}</p>
 
         ${pointsPreview ? `<ul class="note-bullets-preview">${pointsPreview}</ul>` : ''}
+        ${tasksPreview ? `<div class="card-tasks-container" style="margin-bottom: 14px; display: flex; flex-direction: column; gap: 4px;">${tasksPreview}</div>` : ''}
 
         <div class="note-card-footer">
           <span style="font-size: 11px; color: var(--text-muted);">✦ ThoughtDrop</span>
@@ -317,7 +330,14 @@ function renderNotesGrid() {
       const note = allNotes.find(n => n.id === noteId);
       if (!note) return;
 
-      if (action === 'pdf') {
+      if (action === 'toggle-task') {
+        e.stopPropagation();
+        const taskRow = e.target.closest('[data-task-idx]');
+        if (taskRow) {
+          const taskIdx = parseInt(taskRow.dataset.taskIdx, 10);
+          toggleTaskCompletion(noteId, taskIdx);
+        }
+      } else if (action === 'pdf') {
         e.stopPropagation();
         exportNotePdf(note);
       } else if (action === 'share') {
@@ -385,9 +405,16 @@ function populateDetailView(note) {
   const actionsList = document.getElementById('detail-view-actions');
   const actionItems = Array.isArray(note.actionItems) ? note.actionItems : [];
   if (actionItems.length > 0 && actionsList) {
-    actionsList.innerHTML = actionItems.map(a => `
-      <li><span class="bullet-dot">•</span><span>${escapeHtml(a)}</span></li>
-    `).join('');
+    const completedList = Array.isArray(note.completedActions) ? note.completedActions : [];
+    actionsList.innerHTML = actionItems.map((a, idx) => {
+      const isDone = completedList.includes(a);
+      return `
+        <div class="task-item-row ${isDone ? 'completed' : ''}" data-task-idx="${idx}" onclick="window.toggleTaskCompletion('${note.id}', ${idx})">
+          <div class="task-checkbox">${isDone ? '✓' : ''}</div>
+          <span class="task-item-text">${escapeHtml(a)}</span>
+        </div>
+      `;
+    }).join('');
     actionsContainer.style.display = 'block';
   } else if (actionsContainer) {
     actionsContainer.style.display = 'none';
@@ -427,6 +454,40 @@ function closeDetailModal() {
   document.getElementById('detail-modal')?.classList.remove('active');
   currentEditingNote = null;
 }
+
+// Interactive Task Completion Toggle
+export async function toggleTaskCompletion(noteId, taskIndex) {
+  const note = allNotes.find(n => n.id === noteId);
+  if (!note || !Array.isArray(note.actionItems)) return;
+  const taskText = note.actionItems[taskIndex];
+  if (!taskText) return;
+
+  if (!Array.isArray(note.completedActions)) {
+    note.completedActions = [];
+  }
+
+  const existingIdx = note.completedActions.indexOf(taskText);
+  if (existingIdx >= 0) {
+    note.completedActions.splice(existingIdx, 1);
+  } else {
+    note.completedActions.push(taskText);
+  }
+
+  // Optimistic UI refresh for immediate tactile feedback
+  renderNotesGrid();
+  if (currentEditingNote && currentEditingNote.id === noteId) {
+    currentEditingNote = note;
+    populateDetailView(note);
+  }
+
+  try {
+    const user = getCurrentUser();
+    await saveNote(note, user);
+  } catch (err) {
+    console.error("Failed to sync task completion:", err);
+  }
+}
+window.toggleTaskCompletion = toggleTaskCompletion;
 
 // In-Modal AI Refine
 async function handleRefineInModal() {
