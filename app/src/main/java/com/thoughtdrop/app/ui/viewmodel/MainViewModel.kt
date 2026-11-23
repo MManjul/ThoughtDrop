@@ -199,13 +199,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
             result.fold(
                 onSuccess = { parsed ->
+                    val now = System.currentTimeMillis()
                     val initialRecord = AudioRecord(
                         path = audioFile.absolutePath,
                         durationSeconds = duration,
-                        timestamp = System.currentTimeMillis(),
+                        timestamp = now,
                         label = "Original Voice Memo"
                     )
                     val note = NoteEntity(
+                        id = now,
                         title = parsed.title.ifBlank { "Voice Note" },
                         category = parsed.category.ifBlank { "Idea" },
                         summary = parsed.summary,
@@ -216,10 +218,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         audioPath = audioFile.absolutePath,
                         audioListJson = Gson().toJson(listOf(initialRecord)),
                         durationSeconds = duration,
-                        createdAt = System.currentTimeMillis()
+                        createdAt = now
                     )
                     val newId = noteDao.insertNote(note)
-                    syncManager.pushNoteToCloud(note.copy(id = newId))
+                    val finalId = if (newId > 0) newId else now
+                    syncManager.pushNoteToCloud(note.copy(id = finalId))
 
                     // Voice Command Handler: Automatically set phone reminder without manual UI interaction
                     if (parsed.hasReminder) {
@@ -399,7 +402,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             val result = geminiClient.analyzeImage(imageFile, settingsRepo, model)
             result.fold(
                 onSuccess = { parsed ->
+                    val now = System.currentTimeMillis()
                     val note = NoteEntity(
+                        id = now,
                         title = parsed.title.ifBlank { "Photo Note" },
                         category = parsed.category.ifBlank { "Visual" },
                         summary = parsed.summary,
@@ -412,10 +417,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         imagePath = imageFile.absolutePath,
                         imageListJson = Gson().toJson(listOf(imageFile.absolutePath)),
                         durationSeconds = 0,
-                        createdAt = System.currentTimeMillis()
+                        createdAt = now
                     )
                     val newId = noteDao.insertNote(note)
-                    syncManager.pushNoteToCloud(note.copy(id = newId))
+                    val finalId = if (newId > 0) newId else now
+                    syncManager.pushNoteToCloud(note.copy(id = finalId))
                     _uiProcessingState.value = UiProcessingState.Idle
                 },
                 onFailure = { error ->

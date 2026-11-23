@@ -912,6 +912,43 @@ window.onAiKeysSynced = (data) => {
   renderSettingsModalUI();
 };
 
+window.showSyncWarning = function(msg) {
+  let toast = document.getElementById('sync-toast');
+  if (!toast) {
+    toast = document.createElement('div');
+    toast.id = 'sync-toast';
+    toast.style.cssText = `
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      max-width: 360px;
+      padding: 12px 18px;
+      border-radius: 12px;
+      background: rgba(18, 18, 24, 0.95);
+      border: 1px solid rgba(255, 51, 102, 0.4);
+      color: #fff;
+      font-size: 13px;
+      font-weight: 500;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+      z-index: 9999;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      transition: all 0.3s ease;
+      opacity: 0;
+      transform: translateY(10px);
+    `;
+    document.body.appendChild(toast);
+  }
+  toast.innerHTML = `<span>⚠️</span> <span>${escapeHtml(msg)}</span>`;
+  toast.style.opacity = '1';
+  toast.style.transform = 'translateY(0)';
+  setTimeout(() => {
+    toast.style.opacity = '0';
+    toast.style.transform = 'translateY(10px)';
+  }, 4500);
+};
+
 function escapeHtml(text) {
   if (!text) return '';
   return String(text)

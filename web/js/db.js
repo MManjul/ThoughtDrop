@@ -63,6 +63,23 @@ export async function initDb(user) {
       const app = getApps().length === 0 ? initializeApp(config) : getApps()[0];
       db = getFirestore(app);
 
+      // Reconcile and upload any local notes created before signing in
+      const localStr = localStorage.getItem('thoughtdrop_local_notes');
+      if (localStr) {
+        try {
+          const localList = JSON.parse(localStr);
+          if (Array.isArray(localList) && localList.length > 0) {
+            for (const localNote of localList) {
+              if (localNote.id !== 'sample_note_1') {
+                const noteId = String(localNote.id || localNote.createdAt || Date.now());
+                const docRef = doc(db, 'users', user.uid, 'notes', noteId);
+                await setDoc(docRef, { ...localNote, id: noteId }, { merge: true }).catch(() => {});
+              }
+            }
+          }
+        } catch (_) {}
+      }
+
       // 1. Real-time Notes Listener
       const notesRef = collection(db, 'users', user.uid, 'notes');
       const q = query(notesRef, orderBy('createdAt', 'desc'));
@@ -72,6 +89,7 @@ export async function initDb(user) {
           id: doc.id,
           ...doc.data()
         })).filter(n => !n.isDeleted);
+        saveLocalNotes();
         notifyNotesChanged();
       }, (err) => {
         console.error("Firestore listener error, falling back to local:", err);
@@ -176,6 +194,16 @@ export async function saveNote(note, user) {
     updatedAt: Date.now()
   };
 
+  // Ensure Firestore is connected if user is signed in
+  if (!db && user && user.isCloud) {
+    try {
+      const fbConfigStr = localStorage.getItem('thoughtdrop_firebase_config') || JSON.stringify(DEFAULT_FIREBASE_CONFIG);
+      const config = JSON.parse(fbConfigStr);
+      const app = getApps().length === 0 ? initializeApp(config) : getApps()[0];
+      db = getFirestore(app);
+    } catch (_) {}
+  }
+
   if (db && user && user.isCloud) {
     try {
       const docRef = doc(db, 'users', user.uid, 'notes', noteId);
@@ -183,9 +211,15 @@ export async function saveNote(note, user) {
       // Clean up tombstone if present
       const tombstoneRef = doc(db, 'users', user.uid, 'deleted_notes', noteId);
       deleteDoc(tombstoneRef).catch(() => {});
-      return noteData;
     } catch (err) {
       console.error("Firestore save failed, saving locally:", err);
+      if (typeof window.showSyncWarning === 'function') {
+        window.showSyncWarning("Cloud sync error: " + err.message);
+      }
+    }
+  } else if (!user || !user.isCloud) {
+    if (typeof window.showSyncWarning === 'function') {
+      window.showSyncWarning("Saved locally. Click 'Sign in with Google' to sync with your phone.");
     }
   }
 

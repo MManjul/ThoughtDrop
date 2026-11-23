@@ -208,13 +208,18 @@ class FirebaseSyncManager private constructor() {
                     for (delDoc in delSnap.documents) {
                         val delIdStr = delDoc.id
                         val idAsLong = delIdStr.toLongOrNull() ?: delIdStr.removePrefix("note_").toLongOrNull()
+                        val deletedAt = (delDoc.data?.get("deletedAt") as? Number)?.toLong() ?: Long.MAX_VALUE
+
                         if (idAsLong != null) {
-                            noteDao.deleteById(idAsLong)
+                            val existing = noteDao.getNoteById(idAsLong)
+                            if (existing != null && existing.createdAt < deletedAt) {
+                                noteDao.deleteById(idAsLong)
+                            }
                         }
                         val createdAt = (delDoc.data?.get("createdAt") as? Number)?.toLong()
                         if (createdAt != null) {
                             val existing = noteDao.getNoteByCreatedAt(createdAt)
-                            if (existing != null) {
+                            if (existing != null && existing.createdAt <= deletedAt) {
                                 noteDao.deleteById(existing.id)
                             }
                         }
@@ -260,21 +265,23 @@ class FirebaseSyncManager private constructor() {
                     null
                 }
 
-                val deletedIds = mutableSetOf<Long>()
-                val deletedCreatedAts = mutableSetOf<Long>()
+                val deletedMap = mutableMapOf<Long, Long>()
+                val deletedCreatedMap = mutableMapOf<Long, Long>()
                 if (deletedDocs != null) {
                     for (delDoc in deletedDocs.documents) {
                         val delId = delDoc.id.toLongOrNull() ?: delDoc.id.removePrefix("note_").toLongOrNull()
-                        if (delId != null) deletedIds.add(delId)
+                        val deletedAt = (delDoc.data?.get("deletedAt") as? Number)?.toLong() ?: Long.MAX_VALUE
+                        if (delId != null) deletedMap[delId] = deletedAt
                         val createdAt = (delDoc.data?.get("createdAt") as? Number)?.toLong()
-                        if (createdAt != null) deletedCreatedAts.add(createdAt)
+                        if (createdAt != null) deletedCreatedMap[createdAt] = deletedAt
                     }
                 }
 
                 val localNotes = noteDao.getAllNotesDirect()
                 for (localNote in localNotes) {
-                    if (deletedIds.contains(localNote.id) || deletedCreatedAts.contains(localNote.createdAt)) {
-                        // Purge from local Room SQLite; NEVER re-upload to cloud!
+                    val tombstoneTime = deletedMap[localNote.id] ?: deletedCreatedMap[localNote.createdAt]
+                    if (tombstoneTime != null && localNote.createdAt < tombstoneTime) {
+                        // Purge only if the note was created before the tombstone was recorded
                         noteDao.deleteById(localNote.id)
                         continue
                     }
@@ -325,6 +332,14 @@ class FirebaseSyncManager private constructor() {
             )
 
             docRef.set(data, SetOptions.merge()).await()
+
+            // Crucial: remove from deleted_notes if this note ID had an old tombstone
+            try {
+                firestore.collection("users").document(userId)
+                    .collection("deleted_notes")
+                    .document(note.id.toString())
+                    .delete()
+            } catch (_: Exception) {}
         } catch (e: Exception) {
             Log.e(TAG, "Failed to push note ${note.id} to cloud", e)
         }
